@@ -11,7 +11,8 @@ import shutil
 import sys
 from native_helpers import NativeRun, ROOT
 
-HELPER_SHA = "2ff5e2a418622e979ca87af4663a38475147910c07e9cd2f392c13d8254ad09f"
+HELPER_SHA = "4aa826c25246eabb2eb1829c9acb0241472eb38e5c2ff3fa9202d400b1b2aa55"
+NATIVE_FIXTURE_SHA = "5b5818f972c6853dd0ed1bf3713859db21cb96d5fac37e7cb322e8a67e35bde2"
 
 
 def main() -> int:
@@ -19,8 +20,10 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--variants", action="store_true")
     mode.add_argument("--environment-pair", action="store_true")
+    mode.add_argument("--native-vulkan", action="store_true")
     args = parser.parse_args()
-    run = NativeRun("intel-wine-environment" if args.environment_pair else
+    run = NativeRun("intel-wine-native-vulkan" if args.native_vulkan else
+                    "intel-wine-environment" if args.environment_pair else
                     "intel-wine-phase2" if args.variants else "intel-wine-diagnostic")
     helper = ROOT / "ci/diagnose_intel_wine.py"
     # Runtime binaries and prefixes stay outside NativeRun's curated report tree.
@@ -31,12 +34,19 @@ def main() -> int:
                         "graphicsDeviceCreated": False, "gameFpsMeasured": False,
                         "diagnosticVariants": args.variants,
                         "controlledEnvironmentPair": args.environment_pair,
+                        "nativeVulkanAbiIsolation": args.native_vulkan,
+                        "logicalDeviceCreated": False, "surfaceCreated": False,
                         "rendererDisableVariantsShipped": False})
     try:
         if not run.check("actual native Intel host", platform.system() == "Darwin" and platform.machine() == "x86_64"):
             raise RuntimeError("The probe requires an actual Intel Mac host.")
         if not run.check("owner helper byte-identical", hashlib.sha256(helper.read_bytes()).hexdigest() == HELPER_SHA):
             raise RuntimeError("The diagnostic helper differs from the owner's frozen version.")
+        if args.native_vulkan:
+            fixture = helper.with_name("native_vulkan_probe.c")
+            if not run.check("owner native ABI fixture byte-identical",
+                             hashlib.sha256(fixture.read_bytes()).hexdigest() == NATIVE_FIXTURE_SHA):
+                raise RuntimeError("The native ABI fixture differs from the owner's frozen version.")
         if not run.run("source-provenance", [sys.executable, "ci/verify_source.py", "--out", str(run.out / "provenance")], 60):
             raise RuntimeError("Committed source provenance failed.")
         run.run("native-taskpolicy-paths", ["/bin/ls", "-l", "/usr/sbin/taskpolicy", "/usr/bin/taskpolicy"], 15, required=False)
@@ -54,6 +64,8 @@ def main() -> int:
             command.append("--variants")
         elif args.environment_pair:
             command.append("--environment-pair")
+        elif args.native_vulkan:
+            command.append("--native-vulkan")
         run.run("bounded-owner-Wine-probe", command, 1500, env=native_env)
     except Exception as error:
         run.check("native diagnostic infrastructure completed", False, f"{type(error).__name__}: {error}")
@@ -75,7 +87,8 @@ def main() -> int:
                     data = json.loads(report.read_text(encoding="utf-8"))
                     summaries.append({"report": str((target_root / report.name).relative_to(run.out)),
                                       "helperSha256": HELPER_SHA, "steps": data.get("steps", []),
-                                      "gstreamerFrameworkPresent": data.get("gstreamerFrameworkPresent")})
+                                      "gstreamerFrameworkPresent": data.get("gstreamerFrameworkPresent"),
+                                      "nativeVulkanIsolation": data.get("nativeVulkanIsolation")})
         run.details["diagnostics"] = summaries
         run.check("curated diagnostic report exists", len(summaries) == 1)
     return run.finish("Native Intel pinned Wine bootstrap and taskpolicy diagnostics using owned command fixtures. Stage failures are evidence to classify; a green infrastructure job does not claim the actual launcher Wine workflow passed.")
