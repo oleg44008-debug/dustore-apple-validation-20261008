@@ -2,6 +2,7 @@
 """Native iPhone/iPad validation and clearly unsigned device packaging."""
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -73,10 +74,28 @@ def main() -> int:
             if not run.run(label, command, timeout, source, env):
                 raise RuntimeError("Native iOS launch preflight failed: " + label)
         simulator_app = validation / ("Derived-" + args.edition + "Debug") / "Build/Products" / (args.edition + "Debug-iphonesimulator") / "DustoreX.app"
+        compiled_info = plistlib.loads((simulator_app / "Info.plist").read_bytes())
+        primary_icon = compiled_info.get("CFBundleIcons", {}).get("CFBundlePrimaryIcon", {})
+        source_icon = source / "App/Assets.xcassets/AppIcon.appiconset/dustore-app-icon.png"
+        original_brand = source / "App/Assets.xcassets/BrandMark.imageset/dustore-logo-original.png"
+        icon_evidence = {"compiledPrimaryIcon": primary_icon,
+                         "sourceAppIconSha256": hashlib.sha256(source_icon.read_bytes()).hexdigest(),
+                         "originalBrandMarkSha256": hashlib.sha256(original_brand.read_bytes()).hexdigest()}
+        run.details["appIconVerification"] = icon_evidence
+        (run.out / "compiled-app-icon.json").write_text(json.dumps(icon_evidence, indent=2) + "\n", encoding="utf-8")
+        if not run.check("native actool compiled actual AppIcon catalog", primary_icon.get("CFBundleIconName") == "AppIcon"
+                and icon_evidence["sourceAppIconSha256"] == "5d68611dd9418ce13eb8dc8a6679f40d2539b2ae6a7c486bfa4065b615684688"
+                and icon_evidence["originalBrandMarkSha256"] == "69cdb26a75f82302b8f476788a705bbdd6c1ed8d74934e3f05cb4df6a41468d4", icon_evidence):
+            raise RuntimeError("The native build did not compile the exact authentic AppIcon catalog.")
         run.run("preflight-simulator-app-load-commands", ["otool", "-L", str(simulator_app / "DustoreX")], 60)
         run.run("preflight-simulator-signing-diagnostic", ["codesign", "-dvv", str(simulator_app)], 60, required=False)
         if not run.run("preflight-owned-app-install", ["xcrun", "simctl", "install", phone_id, str(simulator_app)], 120):
             raise RuntimeError("The owned native debug app did not install.")
+        # The freshly booted owned simulator is on its Home screen. Keep the
+        # actually installed icon, rather than presenting only its source PNG.
+        time.sleep(2)
+        run.run("preflight-installed-Home-icon", ["xcrun", "simctl", "io", phone_id, "screenshot",
+                str(run.out / "preflight-installed-home-icon.png")], 60)
         # This freshly installed app has never run on our new simulator. Asking
         # SpringBoard to terminate a nonexistent process can stall cold launch.
         launch_command = ["xcrun", "simctl", "launch",

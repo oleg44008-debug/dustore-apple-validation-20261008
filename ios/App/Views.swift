@@ -10,6 +10,7 @@ struct RootView: View {
     @StateObject private var library = Library.shared
     @State private var tab = 1
     @State private var importing = false
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
     @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage(Preferences.motion) private var motion = MotionPreference.full.rawValue
     private var sidebar: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular }
@@ -17,18 +18,25 @@ struct RootView: View {
         ZStack {
             Group {
                 if sidebar {
-                    NavigationSplitView {
+                    NavigationSplitView(columnVisibility: $columnVisibility) {
                         List {
                             Section { Image("BrandMark").resizable().scaledToFit().frame(width: 46, height: 46).accessibilityHidden(true); Text("DUSTORE").font(.headline); EditionMark() }
                             ForEach(Destination.all) { item in
                                 Button { tab = item.id } label: {
                                     Label(item.title, systemImage: item.symbol).foregroundColor(tab == item.id ? Theme.selection : Theme.text).padding(.vertical, 8)
                                 }.listRowBackground(tab == item.id ? Theme.selection.opacity(0.12) : Color.clear)
+                                    .accessibilityLabel(item.title)
                                     .accessibilityValue(tab == item.id ? "Выбрано" : "").accessibilityIdentifier("tab.\(item.id)")
                             }
                         }.scrollContentBackground(.hidden).background(Theme.background)
                             .navigationTitle("DustoreX").navigationSplitViewColumnWidth(min: 190, ideal: 225, max: 270)
-                    } detail: { screen(tab).toolbar(.hidden, for: .navigationBar) }.navigationSplitViewStyle(.balanced)
+                    } detail: {
+                        screen(tab)
+                            .navigationTitle(Destination.all.first(where: { $0.id == tab })?.title ?? "Библиотека")
+                            .navigationBarTitleDisplayMode(.inline)
+                            .toolbarBackground(Theme.background, for: .navigationBar)
+                            .toolbarBackground(.visible, for: .navigationBar)
+                    }.navigationSplitViewStyle(.balanced)
                 } else {
                     TabView(selection: $tab) {
                         StoreScreen().tabItem { Label("Магазин", systemImage: "bag") }.tag(0)

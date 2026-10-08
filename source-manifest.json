@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "foundation player-close freeze: internal plain input state, immediate real key-up preserved, input/session idempotent closed fences and late-callback handling; true unit10/UI6 incl3 close cycles; pinned accessibility import retained;16Swift grammar PASS; native current pending",
-      "snapshottedAtUtc": "2026-10-08T12:34:07.131655+00:00"
+      "milestone": "Foundation explicit freeze: iPad native sidebar navigation, strict destination roundtrips, authentic native AppIcon 5d68611d, player3cycles and unit10 retained; 2026-10-08",
+      "snapshottedAtUtc": "2026-10-08T13:16:13.854763+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -39,6 +39,20 @@
       "platform": "ios",
       "bytes": 104,
       "sha256": "917d8bbcfc76a4a66e477ba0d9de997e07ef5d42806bc9f539aad6a9069eb7e3"
+    },
+    {
+      "path": "ios/App/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "source": "DustoreIOS/App/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "platform": "ios",
+      "bytes": 212,
+      "sha256": "31675b776863de13e76b161e2261ab3f2797c32b918a1bde1a20a54b343c9cac"
+    },
+    {
+      "path": "ios/App/Assets.xcassets/AppIcon.appiconset/dustore-app-icon.png",
+      "source": "DustoreIOS/App/Assets.xcassets/AppIcon.appiconset/dustore-app-icon.png",
+      "platform": "ios",
+      "bytes": 163101,
+      "sha256": "5d68611dd9418ce13eb8dc8a6679f40d2539b2ae6a7c486bfa4065b615684688"
     },
     {
       "path": "ios/App/Assets.xcassets/BrandMark.imageset/Contents.json",
@@ -142,8 +156,8 @@
       "path": "ios/App/Views.swift",
       "source": "DustoreIOS/App/Views.swift",
       "platform": "ios",
-      "bytes": 33690,
-      "sha256": "715c33f12f5a3c4eb9b94829ecaf12f91d07d528cba5971b2e4b785cf7658da9"
+      "bytes": 34235,
+      "sha256": "7a594111a968a28010aad071a642ad3c0cc596c0efcc78ffc4fe1419cf203eb3"
     },
     {
       "path": "ios/App/WebViews.swift",
@@ -163,8 +177,15 @@
       "path": "ios/README.md",
       "source": "DustoreIOS/README.md",
       "platform": "ios",
-      "bytes": 7677,
-      "sha256": "504531e0dbf7fa79d398f23667f6f2936dfe7930e378fa5fc014020a29791c3e"
+      "bytes": 8489,
+      "sha256": "7bbabb658a63bd2f88d7640fc88ce14f685d5d23bbf0fcd80bf6e503ef6ae8e4"
+    },
+    {
+      "path": "ios/Scripts/generate-app-icon.swift",
+      "source": "DustoreIOS/Scripts/generate-app-icon.swift",
+      "platform": "ios",
+      "bytes": 2696,
+      "sha256": "1bc905c45174e2a92f33cf96065fac64d660412fa27f2891db36400c9c636f01"
     },
     {
       "path": "ios/Scripts/package-unsigned-device.sh",
@@ -198,22 +219,22 @@
       "path": "ios/UITests/DustoreUITests.swift",
       "source": "DustoreIOS/UITests/DustoreUITests.swift",
       "platform": "ios",
-      "bytes": 4992,
-      "sha256": "4e4de4f4bbaef7f690de1341259cb2a8666759f0bfd67acd78b79a40f75eeddc"
+      "bytes": 5757,
+      "sha256": "7c2f3f4a298416d7024606b2c91bc55fb230a0ff106cce76ff844c9dcca7566b"
     },
     {
       "path": "ios/VALIDATION.md",
       "source": "DustoreIOS/VALIDATION.md",
       "platform": "ios",
-      "bytes": 4163,
-      "sha256": "ff83d865b0d1b44adec4e40a7a90f7c37bb008af8cff7b4358938f1e53fddd01"
+      "bytes": 4723,
+      "sha256": "75c91406dc4a970da0d5d13a61e333811b808681876f15fa43c89ebe801fbc1a"
     },
     {
       "path": "ios/project.yml",
       "source": "DustoreIOS/project.yml",
       "platform": "ios",
-      "bytes": 2219,
-      "sha256": "7d94a0893bf4625a46a4110b0c7cb5b0f46732f23573eda253ba8c38aaa862b5"
+      "bytes": 2224,
+      "sha256": "475ccc67e9b2e7becfe4d78eb0c55d481b2329dbfb10c7432fa8e9dba9f7c8bf"
     },
     {
       "path": "launcher-mac/App.axaml",

@@ -69,6 +69,18 @@ def main() -> int:
                 "--smoke-report", str(offline_report), "--smoke-screenshot", str(offline / "offline-library.png")], 300, source, env):
             report = json.loads(offline_report.read_text(encoding="utf-8"))
             run.check("offline UI assertion report", report.get("status") == "Pass", report)
+            game_windows = report.get("gameWindowVerification", {})
+            native_windows = game_windows.get("native", {})
+            observations = native_windows.get("observations", [])
+            run.details["gameWindowVerification"] = game_windows
+            window_proof = (game_windows.get("status") == "Pass" and native_windows.get("status") == "Pass"
+                            and native_windows.get("nativeOwnedFixtureExecuted") is True
+                            and {item.get("mode") for item in observations} == {"windowed", "fullscreen"})
+            run.check("actual native high-framebuffer compact/fullscreen game and Exit", window_proof, game_windows)
+            native_images = [offline / name for name in ["game-window-native-compact.png",
+                              "game-window-native-fullscreen.png", "game-controls-native.png"]]
+            run.check("native game/Exit actual screenshot evidence", all(path.is_file() and path.stat().st_size > 0 for path in native_images),
+                      [path.name for path in native_images])
         probe_project = source / "tests/CatalogProbe/CatalogProbe.csproj"
         if probe_project.is_file():
             run.run("2000-entry-viewmodel-overhead", ["dotnet", "run", "--project", str(probe_project), "-c", "Release", "--",

@@ -17,7 +17,12 @@ final class DustoreUITests: XCTestCase {
     }
     private func destination(_ title: String, in app: XCUIApplication) {
         let item = app.tabBars.buttons[title]
-        if item.exists { item.tap() } else { app.buttons[title].firstMatch.tap() }
+        if item.exists { item.tap(); return }
+        let identifier = ["Магазин": "tab.0", "Библиотека": "tab.1", "eX": "tab.2", "Настройки": "tab.3"][title]!
+        let sidebarItem = app.buttons[identifier]
+        XCTAssertTrue(sidebarItem.waitForExistence(timeout: 5), "The adaptive iPad sidebar must expose every destination.")
+        XCTAssertTrue(sidebarItem.isHittable, "The iPad destination must be reachable through visible navigation.")
+        sidebarItem.tap()
     }
     func testEmptyLibraryOffersActualImportAndStore() {
         let app = launch("empty")
@@ -55,6 +60,11 @@ final class DustoreUITests: XCTestCase {
         destination("eX", in: app)
         XCTAssertTrue(app.buttons["ex.import"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["ex.store"].exists)
         capture("07-ex")
+        destination("Настройки", in: app)
+        XCTAssertTrue(app.staticTexts["Анимации интерфейса"].waitForExistence(timeout: 5))
+        capture("12-adaptive-settings-navigation")
+        destination("Библиотека", in: app)
+        XCTAssertTrue(app.buttons["library.import"].waitForExistence(timeout: 5))
     }
     func testPlayerRealPageAndSafeClose() {
         let app = launch("player")
