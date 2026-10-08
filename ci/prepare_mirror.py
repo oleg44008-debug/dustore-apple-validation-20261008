@@ -28,7 +28,7 @@ def digest(data: bytes) -> str:
 
 def safe_files(root: Path, suffixes: set[str]):
     for directory, folders, files in os.walk(root):
-        folders[:] = sorted(name for name in folders if name not in PRUNED and not name.startswith(("bin-", "obj-", "packaging-work-")))
+        folders[:] = sorted(name for name in folders if name not in PRUNED and not name.lower().startswith(("bin", "obj", "packaging-work")))
         for name in sorted(files):
             if name == "polish_iteration2.py":
                 continue  # One-off source transform, not a needed validation fixture.

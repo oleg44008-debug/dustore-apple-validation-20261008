@@ -80,7 +80,7 @@ class NativeRun:
                           and folder not in {"foreign-working-directory", "Payload", "data", "managed", "cache"}]
             for name in files:
                 source = Path(directory) / name
-                if source.suffix.lower() in {".json", ".log", ".txt", ".png", ".jpg", ".jpeg"}:
+                if source.suffix.lower() in {".json", ".log", ".txt", ".png", ".jpg", ".jpeg", ".ips", ".crash"}:
                     target = evidence / source.relative_to(self.out)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(source, target)

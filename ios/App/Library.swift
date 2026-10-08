@@ -19,6 +19,8 @@ final class Library: ObservableObject {
     private var lastProgress = Date.distantPast
     var isBusy: Bool { transfer?.isActive == true }
     var busy: String? { isBusy ? transfer?.title : nil }
+    // Download ownership follows this application-wide model, including adaptive view changes.
+    lazy var storeDownloads = StoreDownloadSession(library: self)
     private var file: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("library.json") }
 
     private init() {

@@ -72,12 +72,20 @@ final class CoreTests: XCTestCase {
         view.loadHTMLString("<canvas tabindex='0'></canvas><script>window.events=[];document.addEventListener('keydown',e=>events.push(e.type+':'+e.code+':'+e.keyCode));document.addEventListener('keyup',e=>events.push(e.type+':'+e.code+':'+e.keyCode));</script>", baseURL: nil)
         await fulfillment(of: [loaded], timeout: 15)
         _ = try await view.evaluateJavaScript(GameInput.bridgeScript)
-        _ = try await view.callAsyncJavaScript("return window.__dustoreInput(keys)", arguments: ["keys": ["ArrowUp", "Space"]], in: nil, in: .page)
-        _ = try await view.callAsyncJavaScript("return window.__dustoreInput(keys)", arguments: ["keys": ["ArrowUp", "Space"]], in: nil, in: .page)
-        _ = try await view.callAsyncJavaScript("return window.__dustoreInput(keys)", arguments: ["keys": [String]()], in: nil, in: .page)
+        _ = try await bridge(view, keys: ["ArrowUp", "Space"])
+        _ = try await bridge(view, keys: ["ArrowUp", "Space"])
+        _ = try await bridge(view, keys: [])
         let events = try await view.evaluateJavaScript("window.events") as? [String]
         XCTAssertEqual(events, ["keydown:ArrowUp:38", "keydown:Space:32", "keyup:ArrowUp:38", "keyup:Space:32"])
         view.navigationDelegate = nil
+    }
+    @MainActor
+    private func bridge(_ view: WKWebView, keys: [String]) async throws -> Any {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any, Error>) in
+            view.callAsyncJavaScript("return window.__dustoreInput(keys)", arguments: ["keys": keys], in: nil, in: .page) { result in
+                continuation.resume(with: result)
+            }
+        }
     }
 }
 

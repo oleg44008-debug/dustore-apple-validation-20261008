@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "foundation: native colorSchemeContrast fix AF06DFEA plus Transfer C04E9F81 and WebViews AD877F22; 15 Swift grammar/config pass; owner freeze 2026-10-08",
-      "snapshottedAtUtc": "2026-10-08T11:06:21.810276+00:00"
+      "milestone": "foundation FINAL candidate: persistent Library-owned StoreDownloadSession lifecycle+native WKDownload localhost unit fixture; actual WebKit checked continuation; external CI simulator scheme helper hook+UITest env forwarding;16 Swift grammar+portable bridge pass; native pending; owner freeze2026-10-08",
+      "snapshottedAtUtc": "2026-10-08T11:46:06.894884+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -107,8 +107,8 @@
       "path": "ios/App/Library.swift",
       "source": "DustoreIOS/App/Library.swift",
       "platform": "ios",
-      "bytes": 13012,
-      "sha256": "ae9066468a0aa738b35f5e7b2986f7a560b680085bf4eac06aa45c71344b95ae"
+      "bytes": 13174,
+      "sha256": "5674ccd58ece7f0da88a41ea666f2601a0309e221f480039544b73c2fb9e5c9b"
     },
     {
       "path": "ios/App/Player.swift",
@@ -149,8 +149,8 @@
       "path": "ios/App/WebViews.swift",
       "source": "DustoreIOS/App/WebViews.swift",
       "platform": "ios",
-      "bytes": 12989,
-      "sha256": "ad877f22f554251ad6bf04de77c02cb675a63461ce8421fbbad73ed6d3594341"
+      "bytes": 13801,
+      "sha256": "eca4ca8014b6a621c0c394bc44316a6b4974cef264eaa03cbd58b375abf7a9db"
     },
     {
       "path": "ios/App/Zip.swift",
@@ -163,8 +163,8 @@
       "path": "ios/README.md",
       "source": "DustoreIOS/README.md",
       "platform": "ios",
-      "bytes": 6841,
-      "sha256": "a3726f360b92d29287a671d7e4807300808c04e85f30adb78ab4473e4077b504"
+      "bytes": 7151,
+      "sha256": "44cf51214a2747f5523aa555b72038e8094c07d713158b95541b31a291639180"
     },
     {
       "path": "ios/Scripts/package-unsigned-device.sh",
@@ -177,29 +177,36 @@
       "path": "ios/Scripts/validate-apple.sh",
       "source": "DustoreIOS/Scripts/validate-apple.sh",
       "platform": "ios",
-      "bytes": 3287,
-      "sha256": "a6e1790cc8d6f0f3dbc9454532362023a932ebe21c26d8778b1d590e50870fe5"
+      "bytes": 3461,
+      "sha256": "119fc79b66b8d0154579066179a5961323d04b25ab2ec7137ca297e7ee41fab4"
     },
     {
       "path": "ios/Tests/CoreTests.swift",
       "source": "DustoreIOS/Tests/CoreTests.swift",
       "platform": "ios",
-      "bytes": 5669,
-      "sha256": "cd78d844ae69f3fab41b6d2dbcd486bcea147c6097dcb51f7ca3dcde641467fe"
+      "bytes": 5819,
+      "sha256": "da170f2647e9d68405d975e502e159f7eadb87656ac72475a3874a759e8982dc"
+    },
+    {
+      "path": "ios/Tests/StoreDownloadTests.swift",
+      "source": "DustoreIOS/Tests/StoreDownloadTests.swift",
+      "platform": "ios",
+      "bytes": 7442,
+      "sha256": "43abbabb38e3ee97f425d957d17873efd391e9adce1ba2d536ba6632ded81456"
     },
     {
       "path": "ios/UITests/DustoreUITests.swift",
       "source": "DustoreIOS/UITests/DustoreUITests.swift",
       "platform": "ios",
-      "bytes": 4264,
-      "sha256": "d94aa0561d0261e85de81bc5d6cd2eab0ce9956d5fb5097ee95adfcd8c5ab746"
+      "bytes": 4451,
+      "sha256": "86020d72b4a2dae07df5649a4dfa81f95525691f4d9da5a5a4b369c3f2b3d147"
     },
     {
       "path": "ios/VALIDATION.md",
       "source": "DustoreIOS/VALIDATION.md",
       "platform": "ios",
-      "bytes": 2609,
-      "sha256": "cd7989fdaa7612e41bd1cfcc67b9ed11244b45463d582c6641735cbf7c424054"
+      "bytes": 3788,
+      "sha256": "b6385b2212527c82f50dc6b2875619ddc90b30251ab1c9a8ee501add22dcb24b"
     },
     {
       "path": "ios/project.yml",

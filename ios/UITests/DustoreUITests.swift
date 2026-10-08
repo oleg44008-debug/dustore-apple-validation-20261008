@@ -5,6 +5,9 @@ final class DustoreUITests: XCTestCase {
     private func launch(_ fixture: String = "library", largeText: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-dustoreUITest", "-dustoreFixture", fixture, "-dustoreOfflineStore"]
+        if let fallback = ProcessInfo.processInfo.environment["DUSTORE_CI_SIMULATOR_DYLD_FALLBACK"] {
+            app.launchEnvironment["DYLD_FALLBACK_LIBRARY_PATH"] = fallback
+        }
         if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launch(); return app
     }

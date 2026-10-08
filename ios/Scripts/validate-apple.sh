@@ -8,6 +8,9 @@ command -v python3 >/dev/null
 mkdir -p Validation
 xcodebuild -version | tee Validation/xcode-version.txt
 xcodegen generate
+if [[ -n "${DUSTORE_CI_SCHEME_ENV_HELPER:-}" ]]; then
+  python3 "$DUSTORE_CI_SCHEME_ENV_HELPER" --project DustoreX.xcodeproj --report Validation/simulator-workaround.json
+fi
 
 # CoreSimulator can need more than a minute on the first run of a fresh CI image.
 python3 - <<'PY'
