@@ -58,14 +58,19 @@ final class DustoreUITests: XCTestCase {
     }
     func testPlayerRealPageAndSafeClose() {
         let app = launch("player")
-        XCTAssertTrue(app.buttons["featured.play"].waitForExistence(timeout: 10)); app.buttons["featured.play"].tap()
-        XCTAssertTrue(app.buttons["player.close"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10))
-        capture("08-player")
-        app.buttons["player.menu"].tap()
-        XCTAssertTrue(app.staticTexts["Управление"].waitForExistence(timeout: 5)); capture("09-player-controls")
-        app.buttons["Готово"].tap(); app.buttons["player.close"].tap()
-        XCTAssertTrue(app.textFields["library.search"].waitForExistence(timeout: 5))
+        for cycle in 0..<3 {
+            XCTAssertTrue(app.buttons["featured.play"].waitForExistence(timeout: 10)); app.buttons["featured.play"].tap()
+            XCTAssertTrue(app.buttons["player.close"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["pad.Space"].waitForExistence(timeout: 5))
+            app.buttons["pad.Space"].press(forDuration: 0.2)
+            if cycle == 0 { capture("08-player") }
+            app.buttons["player.menu"].tap()
+            XCTAssertTrue(app.staticTexts["Управление"].waitForExistence(timeout: 5))
+            if cycle == 0 { capture("09-player-controls") }
+            app.buttons["Готово"].tap(); app.buttons["player.close"].tap()
+            XCTAssertTrue(app.textFields["library.search"].waitForExistence(timeout: 5), "Closing and reopening the real player must preserve the live library process.")
+        }
     }
     func testAccessibilityTextStillHasImportAndSettingsActions() {
         let app = launch("empty", largeText: true)

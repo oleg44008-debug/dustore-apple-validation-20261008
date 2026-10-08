@@ -1,5 +1,6 @@
 import XCTest
 import WebKit
+import Combine
 @testable import DustoreX
 
 final class CoreTests: XCTestCase {
@@ -77,6 +78,40 @@ final class CoreTests: XCTestCase {
         _ = try await bridge(view, keys: [])
         let events = try await view.evaluateJavaScript("window.events") as? [String]
         XCTAssertEqual(events, ["keydown:ArrowUp:38", "keydown:Space:32", "keyup:ArrowUp:38", "keyup:Space:32"])
+        view.navigationDelegate = nil
+    }
+    @MainActor
+    func testNativeInputOwnershipAndFinalCloseIgnoreLateActions() async throws {
+        let view = WKWebView(frame: .zero)
+        let loaded = expectation(description: "owned input-lifecycle page loaded")
+        let delegate = PageDelegate(loaded: loaded)
+        view.navigationDelegate = delegate
+        view.loadHTMLString("<canvas tabindex='0'></canvas><script>window.events=[];document.addEventListener('keydown',e=>events.push(e.type+':'+e.code));document.addEventListener('keyup',e=>events.push(e.type+':'+e.code));</script>", baseURL: nil)
+        await fulfillment(of: [loaded], timeout: 15)
+        _ = try await view.evaluateJavaScript(GameInput.bridgeScript)
+        let input = GameInput(); input.webView = view
+        var publications = 0
+        let subscription = input.objectWillChange.sink { publications += 1 }
+        input.start() // Also queues device-status publication before final teardown.
+        input.hold("Space", down: true, owner: "touch")
+        input.hold("Space", down: true, owner: "controller")
+        input.hold("Space", down: false, owner: "touch")
+        XCTAssertEqual(input.pressed, Set(["Space"]), "One source must not release a key held by another source.")
+        input.close(); input.close()
+        input.start(); input.setActive(true)
+        input.hold("ArrowUp", down: true, owner: "late-callback")
+        input.releaseAll()
+        XCTAssertTrue(input.pressed.isEmpty, "A closed owner must reject late input or reactivation.")
+        var events: [String] = []
+        let deadline = Date().addingTimeInterval(5)
+        repeat {
+            events = try await view.evaluateJavaScript("window.events") as? [String] ?? []
+            if events.count >= 2 { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        } while Date() < deadline
+        XCTAssertEqual(events, ["keydown:Space", "keyup:Space"], "Final close must deliver one actual release without duplicate or late presses.")
+        XCTAssertEqual(publications, 0, "Internal key ownership must not publish into a SwiftUI teardown transaction.")
+        withExtendedLifetime(subscription) {}
         view.navigationDelegate = nil
     }
     @MainActor

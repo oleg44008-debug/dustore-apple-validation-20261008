@@ -46,6 +46,9 @@ class Diagnostic:
         self.root = root
         self.steps: list[dict] = []
         self.server: Path | None = None
+        self.mode = "bootstrap"
+        self.wrapper_reproduced = False
+        self.dxvk_connected = False
         self.environment = os.environ.copy()
         self.environment.update({"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "WINEDEBUG": "err+all,warn+module,fixme-all",
                                  "WINEDLLOVERRIDES": "mscoree,mshtml="})
@@ -77,6 +80,7 @@ class Diagnostic:
                                            stdout=stack, stderr=subprocess.STDOUT, timeout=10)
                         except (subprocess.TimeoutExpired, OSError) as error:
                             stack.write(str(error).encode())
+                    self.sample_owned_wine_children(name, process.pid)
                 if elapsed >= timeout:
                     timed_out = True
                     try:
@@ -103,6 +107,32 @@ class Diagnostic:
             subprocess.run(["/bin/ps", "-axo", "pid,ppid,stat,etime,comm"], stdout=stream, stderr=subprocess.STDOUT, timeout=10)
         return record
 
+    def sample_owned_wine_children(self, name: str, parent: int) -> None:
+        # Detached Wine servers/bootstraps can be reparented to launchd. Verify
+        # their private environment contains this probe's unique root before
+        # sampling. Never write that environment or full CI command line.
+        snapshot = subprocess.run(["/bin/ps", "-axo", "pid=,comm="], capture_output=True, text=True, timeout=10).stdout
+        sampled = 0
+        for line in snapshot.splitlines():
+            fields = line.strip().split(maxsplit=1)
+            if len(fields) != 2 or not fields[0].isdigit():
+                continue
+            pid, command = int(fields[0]), fields[1]
+            if pid == parent or not ("wine" in command.lower() or command.lower().startswith("c:\\windows")):
+                continue
+            private = subprocess.run(["/bin/ps", "eww", "-p", str(pid), "-o", "command="], capture_output=True, text=True, timeout=10).stdout
+            if str(self.root) not in private:
+                continue
+            with (self.root / f"{name}.child-{pid}.sample.log").open("wb") as log:
+                try:
+                    subprocess.run(["/usr/bin/sample", str(pid), "2", "-file", str(self.root / f"{name}.child-{pid}.sample.txt")],
+                                   stdout=log, stderr=subprocess.STDOUT, timeout=10)
+                except (subprocess.TimeoutExpired, OSError) as error:
+                    log.write(str(error).encode())
+            sampled += 1
+            if sampled >= 6:
+                break
+
     def prefix_environment(self, prefix: Path) -> dict:
         prefix.resolve().relative_to(self.root.resolve())
         prefix.mkdir(parents=True, exist_ok=True)
@@ -116,8 +146,10 @@ class Diagnostic:
         (self.root / "diagnostic.json").write_text(json.dumps({"schema": 1, "host": {"system": platform.system(),
             "architecture": platform.machine(), "macOS": platform.mac_ver()[0]}, "wineArchiveSha256": WINE_HASH,
             "dxvkArchiveSha256": DXVK_HASH, "scope": "Owned Windows command fixture and exact pinned Wine bootstrap only. No original game or graphics device.",
-            "productionSourceModified": False, "exactCoreModified": False, "wrapperIsCoreScriptReproduction": True,
+            "mode": self.mode, "productionSourceModified": False, "exactCoreModified": False,
+            "wrapperIsCoreScriptReproduction": self.wrapper_reproduced, "dxvkConnected": self.dxvk_connected,
             "gstreamerFrameworkPresent": Path("/Library/Frameworks/GStreamer.framework").exists(),
+            "inheritedSyncEnvironment": {key: self.environment.get(key) for key in ("WINEMSYNC", "WINEESYNC", "WINEFSYNC")},
             "graphicsDeviceCreated": False, "gameFpsMeasured": False, "steps": self.steps}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -139,12 +171,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--runtime-only", action="store_true")
+    parser.add_argument("--variants", action="store_true", help="Short runtime phase-2 probes; no wrapper or DXVK mutation")
     args = parser.parse_args()
     if platform.system() != "Darwin":
         parser.error("This diagnostic must execute on an actual macOS host")
     root = Path(args.out).resolve() / ("owned-intel-wine-" + uuid.uuid4().hex)
     root.mkdir(parents=True, exist_ok=False)
     probe = Diagnostic(root)
+    probe.mode = "rawVariants" if args.variants else "bootstrap"
     probe.run("host", ["/usr/bin/sw_vers"], 10)
     probe.run("cpu-capabilities", ["/usr/sbin/sysctl", "hw.optional.avx1_0", "hw.optional.avx2_0", "hw.model"], 10)
     probe.run("notification", ["/usr/bin/osascript", "-e", 'display notification "Owned DUSTORE runtime diagnostic" with title "DUSTORE CI"'], 15)
@@ -160,6 +194,28 @@ def main() -> int:
     probe.run("wine-native-architecture", ["/usr/bin/file", str(wine)], 10)
     probe.run("wine-native-dependencies", ["/usr/bin/otool", "-L", str(wine)], 10)
     probe.run("wine-version", [str(wine), "--version"], 20)
+    if args.variants:
+        # A disabled renderer is diagnostic evidence only. Never ship that
+        # environment or use it to label the production GPU path as verified.
+        variants = [
+            ("baseline-traced", {}),
+            ("sync-disabled", {"WINEMSYNC": "0", "WINEESYNC": "0", "WINEFSYNC": "0"}),
+            ("menu-builder-disabled", {"WINEDLLOVERRIDES": "winemenubuilder.exe=d;mscoree,mshtml="}),
+            ("vulkan-disabled-diagnostic-only", {"WINEDLLOVERRIDES": "winevulkan=d;mscoree,mshtml="}),
+            ("mac-driver-disabled-diagnostic-only", {"WINEDLLOVERRIDES": "winemac.drv=d;mscoree,mshtml="}),
+        ]
+        for name, extra in variants:
+            prefix = root / ("prefix-" + name)
+            env = probe.prefix_environment(prefix)
+            env.update({"WINEDEBUG": "err+all,warn+all,trace+process,trace+module"})
+            env.update(extra)
+            try:
+                probe.run(name, [str(wine), "cmd", "/c", "echo", TOKEN], 60, env, sample=True)
+            finally:
+                probe.stop_prefix(name, prefix)
+        probe.save()
+        print(json.dumps({"diagnosticReport": str(root / "diagnostic.json"), "steps": len(probe.steps)}, indent=2))
+        return 0
     raw_prefix = root / "prefix-pure-command"
     try:
         probe.run("pure-wine-first-cmd", [str(wine), "cmd", "/c", "echo", TOKEN], 120, probe.prefix_environment(raw_prefix), sample=True)
@@ -182,6 +238,7 @@ def main() -> int:
                     shutil.copyfile(target / name, target / (name + ".wined3d"))
                 shutil.copyfile(source, target / name)
     initialized = root / "prefix-explicit-boot"
+    probe.dxvk_connected = True
     env = probe.prefix_environment(initialized)
     try:
         probe.run("dxvk-wineboot", [str(wine), "wineboot", "--init"], 120, env, sample=True)
@@ -191,6 +248,7 @@ def main() -> int:
         probe.stop_prefix("explicit-boot", initialized)
 
     if not args.runtime_only:
+        probe.wrapper_reproduced = True
         cmd = next(path for path in wine_home.rglob("cmd.exe") if "x86_64-windows" in path.parts)
         for name, skip_notification, skip_wait in (("wrapper-original", False, False), ("wrapper-no-notification", True, False), ("wrapper-no-server-wait", True, True)):
             fixture = root / name

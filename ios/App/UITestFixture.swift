@@ -18,6 +18,8 @@ enum UITestFixture {
         guard enabled else { return }
         UserDefaults.standard.set(MotionPreference.off.rawValue, forKey: Preferences.motion)
         UserDefaults.standard.set(false, forKey: Preferences.haptics)
+        UserDefaults.standard.set(true, forKey: "dustore.player.touch-controls")
+        UserDefaults.standard.set(InputPreset.arrows.rawValue, forKey: "dustore.player.input-preset")
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         var games: [Game] = []
         if name == "library" || name == "player" {

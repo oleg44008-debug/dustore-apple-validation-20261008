@@ -1,26 +1,33 @@
 #!/usr/bin/env python3
 """Curated native Intel diagnostics; expected failures remain named evidence."""
 from __future__ import annotations
+import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import shutil
 import sys
 from native_helpers import NativeRun, ROOT
 
-HELPER_SHA = "ffdd614d5082028ad9133c1409a04daae5f2a05be26ae47f52ae07901036b781"
+HELPER_SHA = "afe409853ac393ac7f2e3408180022de8a3fb718659e7ee96df3b6ae909c3589"
 
 
 def main() -> int:
-    run = NativeRun("intel-wine-diagnostic")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--variants", action="store_true")
+    args = parser.parse_args()
+    run = NativeRun("intel-wine-phase2" if args.variants else "intel-wine-diagnostic")
     helper = ROOT / "ci/diagnose_intel_wine.py"
     # Runtime binaries and prefixes stay outside NativeRun's curated report tree.
     probes = ROOT / "owned-diagnostics/intel-wine"
     run.details.update({"diagnosticOnly": True, "launcherBuildValidated": False,
                         "generatedCoreWrapperValidated": False,
                         "productionSourceModified": False, "exactCoreModified": False,
-                        "graphicsDeviceCreated": False, "gameFpsMeasured": False})
+                        "graphicsDeviceCreated": False, "gameFpsMeasured": False,
+                        "diagnosticVariants": args.variants,
+                        "rendererDisableVariantsShipped": False})
     try:
         if not run.check("actual native Intel host", platform.system() == "Darwin" and platform.machine() == "x86_64"):
             raise RuntimeError("The probe requires an actual Intel Mac host.")
@@ -30,7 +37,18 @@ def main() -> int:
             raise RuntimeError("Committed source provenance failed.")
         run.run("native-taskpolicy-paths", ["/bin/ls", "-l", "/usr/sbin/taskpolicy", "/usr/bin/taskpolicy"], 15, required=False)
         run.run("native-taskpolicy-owned-command", ["/usr/sbin/taskpolicy", "-a", "-l", "0", "-t", "0", "/usr/bin/true"], 15, required=False)
-        run.run("bounded-owner-Wine-probe", [sys.executable, str(helper), "--out", str(probes)], 1500)
+        # Wine process/module tracing may include its child environment. Supply
+        # only native identity/locale/temp values, never Actions or GitHub secrets.
+        permitted = {"HOME", "USER", "LOGNAME", "LANG", "LC_CTYPE", "TMPDIR",
+                     "__CF_USER_TEXT_ENCODING", "SECURITYSESSIONID"}
+        native_env = {name: value for name, value in os.environ.items() if name in permitted}
+        native_env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        run.details["tracedChildEnvironment"] = {"allowlistedNames": sorted(native_env),
+                                                  "inheritsActionsCredentials": False}
+        command = [sys.executable, str(helper), "--out", str(probes)]
+        if args.variants:
+            command.append("--variants")
+        run.run("bounded-owner-Wine-probe", command, 1500, env=native_env)
     except Exception as error:
         run.check("native diagnostic infrastructure completed", False, f"{type(error).__name__}: {error}")
     finally:

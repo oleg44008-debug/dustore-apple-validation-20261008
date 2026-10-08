@@ -15,15 +15,21 @@ enum InputPreset: String, CaseIterable, Identifiable {
 final class GameInput: ObservableObject {
     @Published private(set) var controllerName: String?
     @Published private(set) var keyboardConnected = false
-    @Published private(set) var pressed = Set<String>()
+    // Touch feedback belongs to each native control. Keyboard ownership is immediate
+    // internal state; publishing it would reenter SwiftUI during representable teardown.
+    private(set) var pressed = Set<String>()
     weak var webView: WKWebView?
     var preset: InputPreset = .arrows { didSet { if oldValue != preset { releaseAll() } } }
     private var owners: [String: Set<String>] = [:]
     private var observers: [NSObjectProtocol] = []
     private var controllers: [GCController] = []
     private var accepting = true
+    private var closed = false
+    private var devicePublicationScheduled = false
+    private var nextControllerName: String?
+    private var nextKeyboardConnected = false
     func start() {
-        guard observers.isEmpty else { return }
+        guard !closed, observers.isEmpty else { return }
         for name in [NSNotification.Name.GCControllerDidConnect, .GCControllerDidDisconnect, .GCKeyboardDidConnect, .GCKeyboardDidDisconnect] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.refreshDevices() }
@@ -32,11 +38,13 @@ final class GameInput: ObservableObject {
         refreshDevices()
     }
     private func refreshDevices() {
+        guard !closed else { return }
         releaseAll()
         for controller in controllers { controller.extendedGamepad?.valueChangedHandler = nil }
         controllers = GCController.controllers()
-        keyboardConnected = GCKeyboard.coalesced != nil
-        controllerName = controllers.first.map { $0.vendorName ?? "Геймпад" }
+        nextKeyboardConnected = GCKeyboard.coalesced != nil
+        nextControllerName = controllers.first.map { $0.vendorName ?? "Геймпад" }
+        publishDevicesAfterViewUpdate()
         for controller in controllers {
             controller.extendedGamepad?.valueChangedHandler = { [weak self, weak controller] pad, _ in
                 let x = abs(pad.dpad.xAxis.value) > abs(pad.leftThumbstick.xAxis.value) ? pad.dpad.xAxis.value : pad.leftThumbstick.xAxis.value
@@ -54,8 +62,19 @@ final class GameInput: ObservableObject {
             }
         }
     }
+    private func publishDevicesAfterViewUpdate() {
+        guard !devicePublicationScheduled else { return }
+        devicePublicationScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.devicePublicationScheduled = false
+            guard !self.closed else { return }
+            if self.keyboardConnected != self.nextKeyboardConnected { self.keyboardConnected = self.nextKeyboardConnected }
+            if self.controllerName != self.nextControllerName { self.controllerName = self.nextControllerName }
+        }
+    }
     func set(_ keys: Set<String>, owner: String) {
-        guard accepting else { return }
+        guard accepting, !closed else { return }
         owners[owner] = keys
         sync()
     }
@@ -69,10 +88,13 @@ final class GameInput: ObservableObject {
     private func send(_ keys: Set<String>) {
         webView?.callAsyncJavaScript("window.__dustoreInput && window.__dustoreInput(keys)", arguments: ["keys": keys.sorted()], in: nil, in: .page) { _ in }
     }
-    func releaseAll() { owners.removeAll(); pressed.removeAll(); send([]) }
-    func setActive(_ active: Bool) { releaseAll(); accepting = active }
+    private func releaseHeldKeys() { owners.removeAll(); pressed.removeAll(); send([]) }
+    func releaseAll() { guard !closed else { return }; releaseHeldKeys() }
+    func setActive(_ active: Bool) { guard !closed else { return }; releaseHeldKeys(); accepting = active }
     func close() {
-        releaseAll(); accepting = false
+        guard !closed else { return }
+        closed = true; accepting = false
+        releaseHeldKeys()
         for controller in controllers { controller.extendedGamepad?.valueChangedHandler = nil }
         controllers.removeAll()
         observers.forEach { NotificationCenter.default.removeObserver($0) }; observers.removeAll()
@@ -120,7 +142,7 @@ struct HoldKey: UIViewRepresentable {
         view.title.text = title
         view.onChange = { [weak input] down in input?.hold(code, down: down, owner: "touch-" + code) }
     }
-    static func dismantleUIView(_ view: HoldKeyControl, coordinator: ()) { view.release() }
+    static func dismantleUIView(_ view: HoldKeyControl, coordinator: ()) { view.release(); view.onChange = nil }
 }
 
 @MainActor

@@ -9,18 +9,28 @@ final class PlayerSession: ObservableObject {
     @Published var fraction: Double?
     @Published var error: String?
     weak var webView: WKWebView?
+    private var closed = false
     init(game: Game) { self.game = game }
     func attach(_ view: WKWebView) {
+        guard !closed else { return }
         webView = view; input.webView = view; input.start(); input.setActive(true)
-        reload()
+        // UIViewRepresentable creation owns an active SwiftUI graph transaction.
+        // Start page/model updates on the next main-queue turn and fence late work.
+        DispatchQueue.main.async { [weak self, weak view] in
+            guard let self, !self.closed, self.webView === view else { return }
+            self.reload()
+        }
     }
     func reload() {
-        input.releaseAll(); ready = false; error = nil; fraction = nil
+        guard !closed else { return }
+        input.releaseAll()
+        if ready { ready = false }; if error != nil { error = nil }; if fraction != nil { fraction = nil }
         let query = ProcessInfo.processInfo.arguments.contains("-dustoreSelfTest") ? "?selftest" : ""
         if let url = URL(string: "\(GameServer.scheme)://game/index.html" + query) { webView?.load(URLRequest(url: url)) }
     }
-    func pageLoaded() { if game.kind == .web { ready = true; fraction = nil } }
+    func pageLoaded() { guard !closed else { return }; if game.kind == .web { ready = true; fraction = nil } }
     func report(_ body: Any) {
+        guard !closed else { return }
         if let value = body as? [String: Any], value["type"] as? String == "progress", let fraction = value["fraction"] as? Double {
             self.fraction = min(1, max(0, fraction)); return
         }
@@ -29,12 +39,19 @@ final class PlayerSession: ObservableObject {
         if text == "started" { ready = true; fraction = nil }
         else if text.hasPrefix("error: ") { fail(String(text.dropFirst(7))) }
     }
-    func fail(_ detail: String) { input.releaseAll(); error = detail; fraction = nil }
+    func fail(_ detail: String) { guard !closed else { return }; input.releaseAll(); error = detail; fraction = nil }
     func setActive(_ active: Bool) {
+        guard !closed else { return }
         input.setActive(active)
         webView?.setAllMediaPlaybackSuspended(!active) { }
     }
-    func close() { input.close(); webView?.setAllMediaPlaybackSuspended(true) { }; webView = nil }
+    func close() {
+        guard !closed else { return }
+        closed = true
+        input.close()
+        webView?.setAllMediaPlaybackSuspended(true) { }
+        webView?.stopLoading(); webView = nil
+    }
 }
 
 struct PlayerScreen: View {

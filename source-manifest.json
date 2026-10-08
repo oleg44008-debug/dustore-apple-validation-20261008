@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "foundation accessibility import freeze: pinned actual import at accessibility Dynamic Type sizes, inline duplicate/artwork omitted; immediate+postswipe hittability assertions strengthened; only Views/UITests/README/VALIDATION changed,16Swift grammar PASS; preserve failed168 native evidence",
-      "snapshottedAtUtc": "2026-10-08T12:18:04.133710+00:00"
+      "milestone": "foundation player-close freeze: internal plain input state, immediate real key-up preserved, input/session idempotent closed fences and late-callback handling; true unit10/UI6 incl3 close cycles; pinned accessibility import retained;16Swift grammar PASS; native current pending",
+      "snapshottedAtUtc": "2026-10-08T12:34:07.131655+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -86,8 +86,8 @@
       "path": "ios/App/GameInput.swift",
       "source": "DustoreIOS/App/GameInput.swift",
       "platform": "ios",
-      "bytes": 9214,
-      "sha256": "74804475f4994770f69f8e8fe55b1039144fd2973486fa0004957c605a04268d"
+      "bytes": 10460,
+      "sha256": "8340fbb3ee046843c9119ef3cb722367965fb745ee98a70a8e222e68c077b83c"
     },
     {
       "path": "ios/App/GameServer.swift",
@@ -114,8 +114,8 @@
       "path": "ios/App/Player.swift",
       "source": "DustoreIOS/App/Player.swift",
       "platform": "ios",
-      "bytes": 10552,
-      "sha256": "3ffa86696cf90d8b8e0ed03740920384beba4cea8f172647f5fd04aa0a7091ba"
+      "bytes": 11297,
+      "sha256": "546e7215fe420d78bbe72fa5fc4d626325cf0f1a44e3caac511ea331aa295ca0"
     },
     {
       "path": "ios/App/Porter.swift",
@@ -135,8 +135,8 @@
       "path": "ios/App/UITestFixture.swift",
       "source": "DustoreIOS/App/UITestFixture.swift",
       "platform": "ios",
-      "bytes": 3246,
-      "sha256": "b8c9c2e45451157b3ba29b9873b2133e326ae03bf1749dac00fa7091c433e50c"
+      "bytes": 3429,
+      "sha256": "7f647033206cb0ec1e33d6fde83c237322c8f418d1d4567ccbd4c3d062870d97"
     },
     {
       "path": "ios/App/Views.swift",
@@ -163,8 +163,8 @@
       "path": "ios/README.md",
       "source": "DustoreIOS/README.md",
       "platform": "ios",
-      "bytes": 7387,
-      "sha256": "285019cd1c1860f85009960f2132f8909d3f03dce22273a5499022d1169e5bfa"
+      "bytes": 7677,
+      "sha256": "504531e0dbf7fa79d398f23667f6f2936dfe7930e378fa5fc014020a29791c3e"
     },
     {
       "path": "ios/Scripts/package-unsigned-device.sh",
@@ -184,8 +184,8 @@
       "path": "ios/Tests/CoreTests.swift",
       "source": "DustoreIOS/Tests/CoreTests.swift",
       "platform": "ios",
-      "bytes": 5819,
-      "sha256": "da170f2647e9d68405d975e502e159f7eadb87656ac72475a3874a759e8982dc"
+      "bytes": 8023,
+      "sha256": "60c417e1a22283de5c5d869055c4a0b533af4f72570f308b56a90f23631da36f"
     },
     {
       "path": "ios/Tests/StoreDownloadTests.swift",
@@ -198,15 +198,15 @@
       "path": "ios/UITests/DustoreUITests.swift",
       "source": "DustoreIOS/UITests/DustoreUITests.swift",
       "platform": "ios",
-      "bytes": 4651,
-      "sha256": "d4bcb8d629de8d3111c6a243f40ed90c64442d9382aba4ebcbf1c3c8418abd0a"
+      "bytes": 4992,
+      "sha256": "4e4de4f4bbaef7f690de1341259cb2a8666759f0bfd67acd78b79a40f75eeddc"
     },
     {
       "path": "ios/VALIDATION.md",
       "source": "DustoreIOS/VALIDATION.md",
       "platform": "ios",
-      "bytes": 3943,
-      "sha256": "54fc911096fd71c7a2ed7398d89ebd1c7e5ad42411a62b7c16da78704327902d"
+      "bytes": 4163,
+      "sha256": "ff83d865b0d1b44adec4e40a7a90f7c37bb008af8cff7b4358938f1e53fddd01"
     },
     {
       "path": "ios/project.yml",
