@@ -13,6 +13,8 @@ public static class UltraMode
 {
     /// <summary>Logical size of the main display, set by the window when it opens.</summary>
     public static (int Width, int Height) Display { get; set; } = (1440, 900);
+    /// <summary>Usable display size in logical points, excluding the macOS menu bar and Dock.</summary>
+    public static (int Width, int Height) WorkingArea { get; set; } = (1440, 900);
 
     public static bool AppleSilicon => RuntimeInformation.OSArchitecture == Architecture.Arm64;
     private static readonly object CapabilityGate = new();

@@ -155,6 +155,7 @@ public sealed class LauncherServices
         // A stale/removed shortcut must not start a game and then fail while updating its history.
         entry = (await LoadLibraryAsync(cancellation).ConfigureAwait(false)).FirstOrDefault(e => e.Id == entry.Id)
             ?? throw new KeyNotFoundException("Игра больше не находится в библиотеке.");
+        if (NativeAppSessions.Find(entry.Id) is not null) throw new InvalidOperationException("Игра уже запущена. Вернитесь в её окно или закройте её.");
         string? app = entry.PreparedMacAppPath;
         if (app is null && Directory.Exists(entry.SourcePath) && entry.SourcePath.EndsWith(".app", StringComparison.OrdinalIgnoreCase)) app = entry.SourcePath;
         if (app is null || !Directory.Exists(app)) throw new InvalidOperationException("Сначала создайте macOS-версию в eX или добавьте готовое приложение .app.");
@@ -191,6 +192,8 @@ public sealed class LauncherServices
             else
             {
                 await _platform.OpenAppAsync(app, arguments, environment, cancellation).ConfigureAwait(false);
+                if (_platform is PlatformLauncher && !wine)
+                    await NativeAppSessions.ObserveAsync(entry, app, cancellation).ConfigureAwait(false);
                 UltraMode.WriteDiagnostics(DataDirectory, entry, wine ? "DXVK / compatible Wine" : "native", arguments, environment);
             }
         }

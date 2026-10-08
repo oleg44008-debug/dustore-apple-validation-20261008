@@ -62,16 +62,17 @@ public static class GameLaunchOptions
     public static IReadOnlyList<string> WineGodotRenderer => new[] { "--rendering-driver", "opengl3", "--rendering-method", "gl_compatibility" };
 
     /// <summary>
-    /// Default: borderless fullscreen at the screen's own size in points (1440×900, not the Retina
-    /// 2880×1800). A windowed Wine game stayed black on Intel Macs (5.2.9–5.3.3), fullscreen showed.
+    /// The first launch uses a window that fits the current usable screen in logical points.
+    /// Explicit fullscreen and the game's own mode remain available in per-game settings.
     /// </summary>
     public static IReadOnlyList<string> Arguments(GameEngineKind engine, string? mode, int? width, int? height)
     {
-        mode ??= Fullscreen;
+        mode ??= Windowed;
         if (mode == GameDefault || engine == GameEngineKind.Other) return Array.Empty<string>();
         bool screenSize = mode == Fullscreen && width is null;
         int w = screenSize ? UltraMode.Display.Width : width ?? DefaultWidth, h = screenSize ? UltraMode.Display.Height : height ?? DefaultHeight;
         bool full = mode == Fullscreen;
+        if (!full) (w, h) = FitWindow(w, h, UltraMode.WorkingArea.Width, UltraMode.WorkingArea.Height);
         return engine switch
         {
             GameEngineKind.Unity => full
@@ -80,6 +81,18 @@ public static class GameLaunchOptions
             GameEngineKind.Godot => new[] { full ? "--fullscreen" : "--windowed", "--resolution", $"{w}x{h}" },
             _ => Array.Empty<string>()
         };
+    }
+
+    /// <summary>Keep the requested aspect ratio while reserving space for window chrome and exit controls.</summary>
+    internal static (int Width, int Height) FitWindow(int width, int height, int workingWidth, int workingHeight)
+    {
+        width = width > 0 ? width : DefaultWidth;
+        height = height > 0 ? height : DefaultHeight;
+        int availableWidth = Math.Max(1, (workingWidth > 0 ? workingWidth : DefaultWidth + 32) - 32);
+        int availableHeight = Math.Max(1, (workingHeight > 0 ? workingHeight : DefaultHeight + 96) - 96);
+        double factor = Math.Min(1D, Math.Min((double)availableWidth / width, (double)availableHeight / height));
+        return (Math.Min(availableWidth, Math.Max(1, (int)Math.Floor(width * factor))),
+            Math.Min(availableHeight, Math.Max(1, (int)Math.Floor(height * factor))));
     }
 
     /// <summary>
@@ -122,21 +135,51 @@ public static class GameLaunchOptions
     public static async Task ReleaseDisplayCaptureAsync(string wine, string prefix, CancellationToken cancellation)
     {
         if (!OperatingSystem.IsMacOS()) return;
-        string marker = Path.Combine(prefix, ".dustore-display-v1");
-        if (File.Exists(marker)) return;
+        await ConfigureDisplayCaptureAsync(wine, prefix, cancellation, WineRuntime.RunAsync).ConfigureAwait(false);
+    }
+
+    internal delegate Task<(int Code, string Output)> CaptureCommandRunner(string tool, IEnumerable<string> arguments,
+        IDictionary<string, string>? environment, TimeSpan timeout, CancellationToken cancellation);
+
+    internal static async Task ConfigureDisplayCaptureAsync(string wine, string prefix, CancellationToken cancellation,
+        CaptureCommandRunner run)
+    {
+        const string contents = "version=2\nCaptureDisplaysForFullscreen=n\nUseFullscreenSpace=n\n";
+        string marker = Path.Combine(prefix, ".dustore-display-v2");
+        cancellation.ThrowIfCancellationRequested();
+        if (File.Exists(marker) && await File.ReadAllTextAsync(marker, cancellation).ConfigureAwait(false) == contents) return;
+        var env = new Dictionary<string, string> { ["WINEPREFIX"] = prefix, ["WINEDEBUG"] = "-all", ["WINEDLLOVERRIDES"] = "mscoree,mshtml=" };
+        Directory.CreateDirectory(prefix);
+        if (!File.Exists(Path.Combine(prefix, "system.reg")))
+            await Checked(wine, new[] { "wineboot", "--init" }, TimeSpan.FromMinutes(5)).ConfigureAwait(false);
+        foreach (string name in new[] { "CaptureDisplaysForFullscreen", "UseFullscreenSpace" })
+        {
+            await Checked(wine, new[] { "reg", "add", @"HKCU\Software\Wine\Mac Driver", "/v", name, "/t", "REG_SZ", "/d", "n", "/f" }, TimeSpan.FromMinutes(2)).ConfigureAwait(false);
+            string output = await Checked(wine, new[] { "reg", "query", @"HKCU\Software\Wine\Mac Driver", "/v", name }, TimeSpan.FromMinutes(2)).ConfigureAwait(false);
+            if (!Regex.IsMatch(output, @"(?im)^\s*" + Regex.Escape(name) + @"\s+REG_SZ\s+n\s*$"))
+                throw new IOException("Wine не подтвердил безопасный режим экрана: " + name + ". Повторите запуск из лаунчера.");
+        }
+        string server = Path.Combine(Path.GetDirectoryName(wine)!, "wineserver");
+        if (File.Exists(server)) await Checked(server, new[] { "-w" }, TimeSpan.FromMinutes(2)).ConfigureAwait(false);
+        cancellation.ThrowIfCancellationRequested();
+        string temporary = marker + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var env = new Dictionary<string, string> { ["WINEPREFIX"] = prefix, ["WINEDEBUG"] = "-all", ["WINEDLLOVERRIDES"] = "mscoree,mshtml=" };
-            Directory.CreateDirectory(prefix);
-            if (!File.Exists(Path.Combine(prefix, "system.reg")))
-                await WineRuntime.RunAsync(wine, new[] { "wineboot", "--init" }, env, TimeSpan.FromMinutes(5), cancellation);
-            foreach (var (name, value) in new[] { ("CaptureDisplaysForFullscreen", "n"), ("UseFullscreenSpace", "n") })
-                await WineRuntime.RunAsync(wine, new[] { "reg", "add", @"HKCU\Software\Wine\Mac Driver", "/v", name, "/t", "REG_SZ", "/d", value, "/f" }, env, TimeSpan.FromMinutes(2), cancellation);
-            string server = Path.Combine(Path.GetDirectoryName(wine)!, "wineserver");
-            if (File.Exists(server)) await WineRuntime.RunAsync(server, new[] { "-w" }, env, TimeSpan.FromMinutes(2), cancellation);
-            File.WriteAllText(marker, "CaptureDisplaysForFullscreen=n\n");
+            await File.WriteAllTextAsync(temporary, contents, cancellation).ConfigureAwait(false);
+            cancellation.ThrowIfCancellationRequested();
+            File.Move(temporary, marker, true);
         }
-        catch (Exception error) when (error is IOException or TimeoutException or InvalidOperationException) { }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+
+        async Task<string> Checked(string tool, IEnumerable<string> arguments, TimeSpan timeout)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var result = await run(tool, arguments, env, timeout, cancellation).ConfigureAwait(false);
+            if (result.Code != 0)
+                throw new IOException("Не удалось настроить доступный выход из Wine (код " + result.Code + "). " +
+                    (result.Output.Length > 500 ? result.Output[^500..] : result.Output));
+            return result.Output;
+        }
     }
 
     // The eX wrapper script names its prefix: export WINEPREFIX="$HOME/Library/Application Support/DustoreX/Wine/<id>"

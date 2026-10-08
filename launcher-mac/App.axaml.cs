@@ -119,6 +119,7 @@ public partial class App : Application
                         window.Width = 1240; window.Height = 820;
                         await Task.Delay(350);
                         var interaction = await Services.UiInteractionChecks.RunAsync(Path.GetDirectoryName(Program.SmokeReportPath)!);
+                        var gameWindows = await Services.GameWindowChecks.RunAsync(window, Path.GetDirectoryName(Program.SmokeReportPath)!);
                         var web = await VerifyEmbeddedStoreAsync(window);
                         Program.WriteReport(new
                         {
@@ -137,6 +138,7 @@ public partial class App : Application
                             originalLogoUnchanged = Program.OriginalLogoUnchanged(),
                             embeddedStore = web,
                             iteration2Interaction = interaction,
+                            gameWindowVerification = gameWindows,
                             verifiedAtUtc = DateTimeOffset.UtcNow
                         });
                         desktop.Shutdown(0);

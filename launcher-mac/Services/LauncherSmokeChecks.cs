@@ -29,11 +29,8 @@ public static class LauncherSmokeChecks
             Directory.CreateDirectory(fixtures);
             string emptyProfile = Path.Combine(fixtures, "empty-startup-profile");
             var emptyService = new LauncherServices(emptyProfile, fakePlatform);
-            UltraMode.Display = (1440, 900);
-            var unityDefault = GameLaunchOptions.Arguments(GameEngineKind.Unity, null, null, null);
-            Check(unityDefault.SequenceEqual(new[] { "-screen-fullscreen", "1", "-window-mode", "borderless", "-screen-width", "1440", "-screen-height", "900" }),
-                "Unity games open borderless fullscreen at the screen size in points by default (a Wine window stayed black on Intel)");
-            Check(GameLaunchOptions.Arguments(GameEngineKind.Unity, GameLaunchOptions.Windowed, null, null).Contains("windowed"), "the window mode stays available on request");
+            VerifyWindowArguments(Check);
+            await VerifyCaptureConfigurationAsync(fixtures, cancellation, Check).ConfigureAwait(false);
             Check(GameLaunchOptions.WineGodotRenderer.Contains("opengl3") && GameLaunchOptions.WineGodotRenderer.Contains("gl_compatibility"),
                 "Godot under Wine starts on the OpenGL Compatibility renderer instead of Vulkan");
             Check(!GameLaunchOptions.Environment(true, "/tmp").ContainsKey("DXVK_ASYNC") && GameLaunchOptions.Environment(true, "/tmp")["DXVK_LOG_PATH"] == "/tmp",
@@ -233,6 +230,85 @@ public static class LauncherSmokeChecks
         {
             return new LauncherSmokeReport(false, checks, profileDirectory, inputPath, sourcePreserved, ex.GetType().Name + ": " + ex.Message, prepared, sessionVerification);
         }
+    }
+
+    private static void VerifyWindowArguments(Action<bool, string> check)
+    {
+        var previousDisplay = UltraMode.Display;
+        var previousWorkArea = UltraMode.WorkingArea;
+        try
+        {
+            UltraMode.Display = (1440, 900);
+            UltraMode.WorkingArea = (1440, 850);
+            check(GameLaunchOptions.Arguments(GameEngineKind.Unity, null, null, null).SequenceEqual(
+                new[] { "-screen-fullscreen", "0", "-window-mode", "windowed", "-screen-width", "1280", "-screen-height", "720" }),
+                "first Unity launch uses a manageable window rather than capturing the entire screen");
+            check(GameLaunchOptions.Arguments(GameEngineKind.Unity, GameLaunchOptions.Fullscreen, null, null).SequenceEqual(
+                new[] { "-screen-fullscreen", "1", "-window-mode", "borderless", "-screen-width", "1440", "-screen-height", "900" }),
+                "explicit fullscreen keeps the full logical display size");
+            foreach (var area in new[] { (Width: 800, Height: 480), (Width: 1024, Height: 640), (Width: 1280, Height: 720), (Width: 1440, Height: 850), (Width: 3440, Height: 1400) })
+            {
+                UltraMode.WorkingArea = area;
+                var fitted = GameLaunchOptions.FitWindow(5000, 3000, area.Width, area.Height);
+                check(fitted.Width > 0 && fitted.Height > 0 && fitted.Width <= area.Width - 32 && fitted.Height <= area.Height - 96
+                    && Math.Abs(fitted.Width - fitted.Height * (5000D / 3000)) < 2,
+                    $"5000x3000 window fits {area.Width}x{area.Height} usable points with chrome/exit space and preserved aspect ratio");
+                var unity = GameLaunchOptions.Arguments(GameEngineKind.Unity, GameLaunchOptions.Windowed, 5000, 3000);
+                var godot = GameLaunchOptions.Arguments(GameEngineKind.Godot, GameLaunchOptions.Windowed, 5000, 3000);
+                check(unity.Contains(fitted.Width.ToString()) && unity.Contains(fitted.Height.ToString())
+                    && godot.SequenceEqual(new[] { "--windowed", "--resolution", $"{fitted.Width}x{fitted.Height}" }),
+                    "both engine launch paths receive the fitted resolution for " + area.Width + "x" + area.Height);
+            }
+            UltraMode.WorkingArea = (1440, 850);
+            check(GameLaunchOptions.FitWindow(1024, 576, 1440, 850) == (1024, 576), "a fitting custom window is never enlarged or rescaled");
+            check(GameLaunchOptions.FitWindow(0, -1, 1440, 850) == (1280, 720), "invalid persisted dimensions fall back to a valid fitting window");
+            check(GameLaunchOptions.Arguments(GameEngineKind.Other, null, 5000, 3000).Count == 0
+                && GameLaunchOptions.Arguments(GameEngineKind.Unity, GameLaunchOptions.GameDefault, 5000, 3000).Count == 0,
+                "unknown engines and explicit game-default mode do not receive invented engine arguments");
+        }
+        finally { UltraMode.Display = previousDisplay; UltraMode.WorkingArea = previousWorkArea; }
+    }
+
+    private static async Task VerifyCaptureConfigurationAsync(string fixtures, CancellationToken cancellation, Action<bool, string> check)
+    {
+        string prefix = Path.Combine(fixtures, "display-capture-owned-prefix");
+        string bin = Path.Combine(fixtures, "display-capture-owned-runtime", "bin");
+        Directory.CreateDirectory(prefix); Directory.CreateDirectory(bin);
+        File.WriteAllText(Path.Combine(prefix, "system.reg"), "Owned recording fixture, never executed.");
+        File.WriteAllText(Path.Combine(prefix, ".dustore-display-v1"), "Unverified legacy marker must not suppress the repair.");
+        File.WriteAllText(Path.Combine(bin, "wineserver"), "Owned recording fixture, never executed.");
+        string wine = Path.Combine(bin, "wine"), marker = Path.Combine(prefix, ".dustore-display-v2");
+        int calls = 0;
+        Task<(int Code, string Output)> Failed(string tool, IEnumerable<string> arguments, IDictionary<string, string>? environment, TimeSpan timeout, CancellationToken token)
+        { calls++; return Task.FromResult((5, "Owned command rejection.")); }
+        await MustThrowAsync<IOException>(() => GameLaunchOptions.ConfigureDisplayCaptureAsync(wine, prefix, cancellation, Failed));
+        check(calls == 1 && !File.Exists(marker), "failed capture command cannot write a success marker, even when an old marker exists");
+        Task<(int Code, string Output)> WrongReadback(string tool, IEnumerable<string> arguments, IDictionary<string, string>? environment, TimeSpan timeout, CancellationToken token)
+        {
+            calls++;
+            var args = arguments.ToArray();
+            return Task.FromResult((0, args.Contains("query") ? args[Array.IndexOf(args, "/v") + 1] + "    REG_SZ    y\n" : ""));
+        }
+        await MustThrowAsync<IOException>(() => GameLaunchOptions.ConfigureDisplayCaptureAsync(wine, prefix, cancellation, WrongReadback));
+        check(!File.Exists(marker), "successful reg exit with capture still enabled is rejected by actual readback parsing");
+        int successfulCommands = 0;
+        Task<(int Code, string Output)> Recorded(string tool, IEnumerable<string> arguments, IDictionary<string, string>? environment, TimeSpan timeout, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested(); successfulCommands++;
+            check(environment?["WINEPREFIX"] == prefix, "capture preparation is limited to the exact owned prefix");
+            var args = arguments.ToArray();
+            return Task.FromResult((0, args.Contains("query") ? args[Array.IndexOf(args, "/v") + 1] + "    REG_SZ    n\r\n" : ""));
+        }
+        await GameLaunchOptions.ConfigureDisplayCaptureAsync(wine, prefix, cancellation, Recorded);
+        check(successfulCommands == 5 && File.ReadAllText(marker) == "version=2\nCaptureDisplaysForFullscreen=n\nUseFullscreenSpace=n\n",
+            "both capture flags are read back before the owned server finishes and the new marker commits");
+        await GameLaunchOptions.ConfigureDisplayCaptureAsync(wine, prefix, cancellation, Recorded);
+        check(successfulCommands == 5, "a verified unchanged prefix does not repeat capture preparation on the next launch");
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        string cancelledPrefix = Path.Combine(fixtures, "display-capture-cancelled");
+        await MustThrowAsync<OperationCanceledException>(() => GameLaunchOptions.ConfigureDisplayCaptureAsync(wine, cancelledPrefix, cancelled.Token, Recorded));
+        check(!Directory.Exists(cancelledPrefix) && successfulCommands == 5, "cancelled preparation neither starts a command nor creates a prefix or marker");
+        check(!Directory.EnumerateFiles(prefix, ".dustore-display-v2.*.tmp").Any(), "capture preparation leaves no unfinished marker file");
     }
 
     private static async Task MustThrowAsync<T>(Func<Task> action) where T : Exception

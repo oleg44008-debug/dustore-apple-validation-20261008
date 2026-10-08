@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private Task? _initializeTask;
     private bool _closingPrompt;
     private readonly SurfaceMotion _surfaceMotion = new();
+    private readonly GameControlHub _gameControls;
 
     private readonly NativeWebView? _web;
     private string? _webSectionShown;
@@ -33,6 +34,8 @@ public partial class MainWindow : Window
         Title = "DUSTORE LAUNCHER V" + (Edition.IsPrime ? " Prime" : "");
         ViewModel = viewModel;
         DataContext = ViewModel;
+        _gameControls = new GameControlHub(this);
+        InstallNativeMenu();
         if (OperatingSystem.IsMacOS())
         {
             // Content runs under the title bar; the rail leaves room for the window buttons.
@@ -105,7 +108,7 @@ public partial class MainWindow : Window
         DragDrop.AddDropHandler(this, OnDrop);
         SizeChanged += (_, _) => UpdatePresentation();
         PositionChanged += (_, _) => RefreshCurrentDisplay();
-        Closed += (_, _) => { _surfaceMotion.Dispose(); IntroMotion.Skip(); ViewModel.Dispose(); };
+        Closed += (_, _) => { _gameControls.Dispose(); _surfaceMotion.Dispose(); IntroMotion.Skip(); ViewModel.Dispose(); };
         PropertyChanged += (_, args) =>
         {
             if (args.Property != WindowStateProperty && args.Property != IsActiveProperty) return;
@@ -119,6 +122,37 @@ public partial class MainWindow : Window
 
     public MainViewModel ViewModel { get; }
     public NativeWebView? WebView => _web;
+    internal GameControlHub GameControls => _gameControls;
+
+    private void InstallNativeMenu()
+    {
+        var file = new NativeMenu();
+        var add = new NativeMenuItem("Добавить игру…") { Gesture = new KeyGesture(Key.O, KeyModifiers.Meta) };
+        var addFolder = new NativeMenuItem("Добавить папку игры…");
+        add.Click += (_, _) => AddGameFile_Click(this, new RoutedEventArgs());
+        addFolder.Click += (_, _) => AddGameFolder_Click(this, new RoutedEventArgs());
+        file.Items.Add(add); file.Items.Add(addFolder); file.Items.Add(new NativeMenuItemSeparator());
+        file.Items.Add(new NativeMenuItem("Открыть папку библиотеки") { Command = ViewModel.RevealDataCommand });
+        file.Items.Add(new NativeMenuItem("Обновить библиотеку") { Command = ViewModel.RefreshCommand, Gesture = new KeyGesture(Key.R, KeyModifiers.Meta) });
+        file.NeedsUpdate += (_, _) => { add.IsEnabled = addFolder.IsEnabled = !ViewModel.IsBusy && StorageProvider.CanOpen; };
+        var view = new NativeMenu();
+        view.Items.Add(new NativeMenuItem("Библиотека") { Command = ViewModel.LibraryCommand, Gesture = new KeyGesture(Key.D1, KeyModifiers.Meta) });
+        var ex = new NativeMenuItem("eX · перенос игр") { Command = ViewModel.ExCommand, Gesture = new KeyGesture(Key.D2, KeyModifiers.Meta) };
+        var store = new NativeMenuItem("Магазин") { Command = ViewModel.StoreCommand, Gesture = new KeyGesture(Key.D3, KeyModifiers.Meta) };
+        view.Items.Add(ex); view.Items.Add(store); view.Items.Add(new NativeMenuItemSeparator());
+        view.Items.Add(new NativeMenuItem("Настройки…") { Command = ViewModel.SettingsCommand, Gesture = new KeyGesture(Key.OemComma, KeyModifiers.Meta) });
+        var fullscreen = new NativeMenuItem("На весь экран / вернуться") { Gesture = new KeyGesture(Key.F, KeyModifiers.Meta | KeyModifiers.Control) };
+        fullscreen.Click += (_, _) => ToggleFullscreen(); view.Items.Add(fullscreen);
+        view.NeedsUpdate += (_, _) => { ex.IsVisible = ViewModel.ShowExSection; store.IsVisible = ViewModel.ShowStoreSection; };
+        var game = new NativeMenu();
+        game.Items.Add(new NativeMenuItem("Играть") { Command = ViewModel.LaunchCommand });
+        game.Items.Add(new NativeMenuItem("Закрыть запущенную игру") { Command = ViewModel.StopGameCommand });
+        game.Items.Add(new NativeMenuItem("Показать игру в Finder") { Command = ViewModel.RevealGameCommand });
+        NativeMenu.SetMenu(this, new NativeMenu
+        {
+            new NativeMenuItem("Файл") { Menu = file }, new NativeMenuItem("Вид") { Menu = view }, new NativeMenuItem("Игра") { Menu = game }
+        });
+    }
 
     private void ShowWebSection()
     {
@@ -159,6 +193,7 @@ public partial class MainWindow : Window
         ViewModel.Section = "store";
         _web?.Navigate(page);
     }
+    private async void RetryDownloadImport_Click(object? sender, RoutedEventArgs e) => await ViewModel.RetryDownloadImportAsync();
 
     private void Fullscreen_Click(object? sender, RoutedEventArgs e) => ToggleFullscreen();
     private WindowState _beforeFullscreen;
@@ -177,7 +212,11 @@ public partial class MainWindow : Window
     private void RefreshCurrentDisplay()
     {
         if (Screens.ScreenFromWindow(this) is { } screen)
+        {
             UltraMode.Display = ((int)(screen.Bounds.Width / screen.Scaling), (int)(screen.Bounds.Height / screen.Scaling));
+            UltraMode.WorkingArea = (Math.Max(1, (int)(screen.WorkingArea.Width / screen.Scaling)),
+                Math.Max(1, (int)(screen.WorkingArea.Height / screen.Scaling)));
+        }
     }
     private void OnDragOver(object? sender, DragEventArgs e)
     {

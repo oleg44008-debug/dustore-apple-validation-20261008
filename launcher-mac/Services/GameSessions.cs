@@ -19,6 +19,7 @@ internal static class GameSessions
     public static event EventHandler<GameSessionEventArgs>? Changed;
     public static bool HasWineSessions { get { lock (Gate) return Active.Count > 0; } }
     public static WineSession? Find(Guid id) { lock (Gate) return Active.GetValueOrDefault(id); }
+    internal static WineSession[] Snapshot() { lock (Gate) return Active.Values.ToArray(); }
 
     public static Reservation Reserve(Guid id, string prefix)
     {

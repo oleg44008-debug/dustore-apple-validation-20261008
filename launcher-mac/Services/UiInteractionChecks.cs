@@ -39,6 +39,13 @@ internal static class UiInteractionChecks
         try
         {
             window.Show(); await window.InitializeAsync(); await Task.Delay(150); window.UpdateLayout();
+            var nativeMenu = NativeMenu.GetMenu(window) ?? throw new InvalidOperationException("The window has no native menu.");
+            var nativeItems = nativeMenu.Items.OfType<NativeMenuItem>().SelectMany(i => i.Menu?.Items.OfType<NativeMenuItem>() ?? Enumerable.Empty<NativeMenuItem>()).ToArray();
+            Check(nativeItems.Any(i => i.Header == "Добавить игру…" && i.Gesture == new KeyGesture(Key.O, KeyModifiers.Meta)), "native File menu exposes Add game and its Command-O gesture");
+            Check(nativeItems.Any(i => ReferenceEquals(i.Command, model.RevealDataCommand))
+                && nativeItems.Any(i => ReferenceEquals(i.Command, model.SettingsCommand)), "native menu uses the actual library folder and Preferences commands");
+            Check(nativeItems.Single(i => ReferenceEquals(i.Command, model.StopGameCommand)).IsEnabled == model.StopGameCommand.CanExecute(null),
+                "native Game Exit is disabled when there is no verified owned game session");
             Check(model.Games.Count == 2000 && model.ShelfItems.Count == 61, "2000 entries create at most 60 game-card containers plus one add tile");
             var selected = model.SelectedGame;
             model.Search = "Game 0"; model.Search = "";
@@ -101,6 +108,49 @@ internal static class UiInteractionChecks
                 await UntilAsync(() => resumedModel.DownloadReady && resumedModel.Games.Count == 1, "foreground download import");
                 Check(File.Exists(love), "restoring the launcher resumes the owned download import and preserves its source");
             }
+            using (var cancelledImport = new MainViewModel(new LauncherServices(Path.Combine(profile, "cancelled-download-import"), platform)))
+            {
+                await cancelledImport.InitializeAsync();
+                bool requestedCancel = false;
+                void CancelFirstImport(object? sender, System.ComponentModel.PropertyChangedEventArgs change)
+                {
+                    if (change.PropertyName == nameof(MainViewModel.IsBusy) && cancelledImport.IsBusy && !requestedCancel)
+                    {
+                        requestedCancel = true;
+                        cancelledImport.CancelCommand.Execute(null);
+                    }
+                }
+                cancelledImport.PropertyChanged += CancelFirstImport;
+                cancelledImport.UpdateDownload(download with { Id = 92 });
+                await UntilAsync(() => !cancelledImport.IsBusy && cancelledImport.DownloadCanRetryImport, "cancelled download import recovery");
+                cancelledImport.PropertyChanged -= CancelFirstImport;
+                Check(requestedCancel && cancelledImport.DownloadText.Contains("отменено", StringComparison.Ordinal)
+                    && !cancelledImport.DownloadReady && !cancelledImport.HasError && File.Exists(love),
+                    "cancelling import preserves the completed file and presents a truthful retryable state");
+                await cancelledImport.RetryDownloadImportAsync();
+                Check(cancelledImport.DownloadReady && cancelledImport.Games.Count == 1 && !cancelledImport.DownloadCanRetryImport,
+                    "retry imports the existing file exactly once without another network download");
+            }
+            using (var failedImport = new MainViewModel(new LauncherServices(Path.Combine(profile, "failed-download-import"), platform)))
+            {
+                await failedImport.InitializeAsync();
+                string recoveredPath = Path.Combine(profile, "recovered-download.love");
+                failedImport.UpdateDownload(download with { Id = 93, Name = "recovered-download.love", Path = recoveredPath });
+                await UntilAsync(() => !failedImport.IsBusy && failedImport.DownloadCanRetryImport, "failed download import recovery");
+                Check(failedImport.HasError && !failedImport.DownloadReady && failedImport.LastDownload?.Status == DownloadStatus.Finished,
+                    "import failure keeps the completed network state and exposes a separate import retry");
+                File.Copy(love, recoveredPath);
+                await failedImport.RetryDownloadImportAsync();
+                Check(failedImport.DownloadReady && failedImport.Games.Count == 1 && !failedImport.HasError && File.Exists(recoveredPath),
+                    "correcting the owned import failure reuses its file and clears the error");
+                failedImport.UpdateDownload(download with { Id = 94, Status = DownloadStatus.Cancelled });
+                Check(failedImport.DownloadCanRetry && !failedImport.DownloadCanRetryImport
+                    && failedImport.DownloadRetryUrl == download.SourcePage,
+                    "a cancelled network request opens its original page instead of pretending to retry import");
+            }
+            Check(window.FindControl<Button>("OpenDownloadPageButton")?.Content?.ToString() == "Открыть страницу"
+                && ControlAutomationPeer.CreatePeerForElement(window.FindControl<Button>("OpenDownloadPageButton")!)?.GetName() == "Открыть страницу загрузки",
+                "download page recovery describes the real navigation action and has an accessible name");
             model.SelectedTarget = model.Targets[1]; await model.SetSourceAsync(love);
             Check(model.PlanUsesRuntime && model.CanConvert, "eX exposes the existing LÖVE runtime editor after analysis");
             Check(!model.PlanFacts.Contains("Portable or unknown", StringComparison.Ordinal), "eX localizes the platform-neutral source summary");

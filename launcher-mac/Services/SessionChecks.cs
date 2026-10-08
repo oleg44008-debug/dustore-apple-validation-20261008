@@ -88,6 +88,22 @@ internal static class SessionChecks
             if (GameSessions.Find(stoppable.Id) is not null && session is not null) await session.StopAsync(CancellationToken.None);
         }
 
+        string cancellationReady = Path.Combine(directory, "cancel-ready.txt");
+        var cancellable = OwnProcess(); cancellable.ArgumentList.Add("--hold"); cancellable.ArgumentList.Add("--ready"); cancellable.ArgumentList.Add(cancellationReady);
+        using (var userCancel = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
+        {
+            var command = WineRuntime.RunAsync(cancellable.FileName, cancellable.ArgumentList, null, TimeSpan.FromSeconds(20), userCancel.Token);
+            var watch = Stopwatch.StartNew();
+            while (!File.Exists(cancellationReady) && watch.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(20, cancellation);
+            Check(File.Exists(cancellationReady), "cancellable helper is an actual started owned child");
+            userCancel.Cancel();
+            try { await command; throw new InvalidOperationException("User cancellation did not cancel its owned helper."); }
+            catch (OperationCanceledException) { checks.Add("actual user cancellation remains cancellation, rather than a misleading Wine timeout"); }
+        }
+        var timed = OwnProcess(); timed.ArgumentList.Add("--hold"); timed.ArgumentList.Add("--ready"); timed.ArgumentList.Add(Path.Combine(directory, "timeout-ready.txt"));
+        try { await WineRuntime.RunAsync(timed.FileName, timed.ArgumentList, null, TimeSpan.FromMilliseconds(250), cancellation); throw new InvalidOperationException("Owned helper did not time out."); }
+        catch (TimeoutException) { checks.Add("an actual helper deadline remains distinct from user cancellation"); }
+
         string wineHome = Path.Combine(directory, "capability-wine");
         string binary = Path.Combine(wineHome, "bin", "wine64"); Directory.CreateDirectory(Path.GetDirectoryName(binary)!);
         string ntdll = Path.Combine(wineHome, "lib", "wine", "x86_64-unix", "ntdll.so"); Directory.CreateDirectory(Path.GetDirectoryName(ntdll)!);

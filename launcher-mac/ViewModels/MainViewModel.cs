@@ -47,6 +47,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _importedDownloadId;
     private Guid? _downloadedGameId;
     private string _downloadNote = "";
+    private DownloadImportState _downloadImportState;
+    private enum DownloadImportState { None, Queued, Running, Ready, Failed, Cancelled }
     private Task<bool>? _wineInstall;
     private UiPreferences _ui = new();
     private Guid? _launchingId;
@@ -115,6 +117,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             Search = ""; Shelf = "all"; Section = "library"; SelectVisibleGame(id);
         }, () => _convertedGameId is not null && !IsBusy);
         GameSessions.Changed += OnGameSessionChanged;
+        NativeAppSessions.Changed += OnGameSessionChanged;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -169,9 +172,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     // A first start takes a while (macOS checks a new app; Wine prepares its prefix). The Play
     // button says so instead of looking idle, which read as "only the second click works".
     public bool SelectedLaunching => SelectedGame is not null && _launchingId == SelectedGame.Entry.Id;
-    public bool SelectedRunning => SelectedGame is not null && GameSessions.Find(SelectedGame.Entry.Id) is not null;
+    public bool SelectedRunning => SelectedGame is not null && (GameSessions.Find(SelectedGame.Entry.Id) is not null || NativeAppSessions.Find(SelectedGame.Entry.Id) is not null);
     public string PlayLabel => SelectedLaunching ? "Запуск…" : SelectedRunning ? "В игре" : "Играть";
-    public string LaunchNote => SelectedRunning ? "Игра запущена. Закрыть её можно здесь или из самой игры. Из полноэкранной игры вернитесь через ⌘Tab."
+    public string LaunchNote => SelectedRunning ? "Игра запущена. «Лаунчер» и «Выйти из игры» доступны в отдельной панели. Для возврата также используйте ⌘Tab."
         : !SelectedLaunching ? ""
         : _launchIsWine ? "Windows-игра запускается через Wine (первый запуск — до пары минут). Выйти из игры: ⌘Q, или ⌘Tab → «Закрыть игру»."
         : "macOS открывает игру. Первый запуск новой игры занимает несколько секунд.";
@@ -190,17 +193,17 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         new ResolutionChoice(1024, 576), new ResolutionChoice(1280, 720), new ResolutionChoice(1440, 810), new ResolutionChoice(1600, 900), new ResolutionChoice(1920, 1080)
     };
     public bool SelectedHasWindowOptions => SelectedGame?.CanLaunch == true && SelectedGame.Engine != GameEngineKind.Other;
-    public bool SelectedCanStop => SelectedGame?.CanLaunch == true && (SelectedRunning || !SelectedIsWineGame);
+    public bool SelectedCanStop => SelectedRunning;
     public WindowChoice? SelectedWindowMode
     {
-        get => SelectedGame is null ? null : AllWindowModes.FirstOrDefault(m => m.Key == (SelectedGame.Entry.WindowMode ?? GameLaunchOptions.Fullscreen));
+        get => SelectedGame is null ? null : AllWindowModes.FirstOrDefault(m => m.Key == (SelectedGame.Entry.WindowMode ?? GameLaunchOptions.Windowed));
         set { if (value is not null) _ = SaveWindowOptionsAsync(value.Key, SelectedResolution); }
     }
     public ResolutionChoice? SelectedResolution
     {
         get => SelectedGame is null ? null : AllResolutions.FirstOrDefault(r => r.Width == (SelectedGame.Entry.WindowWidth ?? GameLaunchOptions.DefaultWidth)
             && r.Height == (SelectedGame.Entry.WindowHeight ?? GameLaunchOptions.DefaultHeight)) ?? AllResolutions[1];
-        set { if (value is not null) _ = SaveWindowOptionsAsync(SelectedWindowMode?.Key ?? GameLaunchOptions.Fullscreen, value); }
+        set { if (value is not null) _ = SaveWindowOptionsAsync(SelectedWindowMode?.Key ?? GameLaunchOptions.Windowed, value); }
     }
     public bool SelectedResolutionMatters => SelectedWindowMode?.Key != GameLaunchOptions.GameDefault;
     // ---- Prime per-game performance ----
@@ -329,9 +332,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             if (GameSessions.Find(entry.Id) is { } running) await running.StopAsync(CancellationToken.None);
-            else if (!await Task.Run(() => WineRuntime.IsWineWrapper(entry.PreparedMacAppPath ?? entry.SourcePath)))
-                await GameLaunchOptions.StopAsync(entry.PreparedMacAppPath ?? entry.SourcePath, CancellationToken.None);
-            else throw new InvalidOperationException("Эта Wine-игра не запущена из текущей сессии лаунчера.");
+            else if (NativeAppSessions.Find(entry.Id) is { } native)
+            {
+                if (!await native.StopAsync(false, CancellationToken.None))
+                    throw new IOException("Игра ещё работает. В панели игры доступно принудительное завершение.");
+            }
+            else throw new InvalidOperationException("Нет подтверждённой игровой сессии, запущенной из этого лаунчера.");
             if (_launchingId == entry.Id) { _launchingId = null; NotifyLaunch(); }
             Status = "Запрос закрытия отправлен игре.";
         }
@@ -599,6 +605,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool DownloadRunning => _download?.Status == DownloadStatus.Running;
     public bool DownloadReady => _downloadedGameId is not null && _download?.Status == DownloadStatus.Finished;
     public bool DownloadCanRetry => _download is { Status: DownloadStatus.Failed or DownloadStatus.Cancelled };
+    public bool DownloadCanRetryImport => _download is { Status: DownloadStatus.Finished }
+        && _downloadImportState is DownloadImportState.Failed or DownloadImportState.Cancelled;
     public bool DownloadIndeterminate => DownloadRunning && _download?.TotalBytes is not > 0;
     public string DownloadRetryUrl => _download?.SourcePage ?? WebStartUrl;
     public Guid? DownloadedGameId => _downloadedGameId;
@@ -610,7 +618,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         null => "",
         { Status: DownloadStatus.Running } d => d.TotalBytes > 0
             ? $"{Megabytes(d.ReceivedBytes)} из {Megabytes(d.TotalBytes)} МБ · {d.Fraction * 100:0}%" : $"{Megabytes(d.ReceivedBytes)} МБ",
-        { Status: DownloadStatus.Finished } => _downloadNote.Length > 0 ? _downloadNote : "Скачано. Добавляю в библиотеку…",
+        { Status: DownloadStatus.Finished } => _downloadNote.Length > 0 ? _downloadNote : "Файл скачан.",
         { Status: DownloadStatus.Cancelled } => "Загрузка отменена.",
         { Status: DownloadStatus.Failed } d => "Не удалось скачать: " + d.Error,
         _ => ""
@@ -622,10 +630,21 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand DismissDownloadCommand => new RelayCommand(() => { _download = null; NotifyDownload(); });
     private static string Megabytes(long bytes) => (bytes / 1048576.0).ToString(bytes < 10 * 1048576 ? "0.0" : "0", Russian);
 
+    public Task RetryDownloadImportAsync()
+    {
+        if (_disposed || IsBusy || !DownloadCanRetryImport || _download is not { Status: DownloadStatus.Finished } download)
+            return Task.CompletedTask;
+        // Reuse the completed file. A failed import never repeats the network request.
+        return ImportDownloadAsync(download);
+    }
+
     public void UpdateDownload(DownloadSnapshot download)
     {
         bool finishedNow = download.Status == DownloadStatus.Finished && download.Id != _importedDownloadId;
-        if (_download?.Id != download.Id) { _downloadNote = ""; _downloadedGameId = null; }
+        if (_download?.Id != download.Id)
+        {
+            _downloadNote = ""; _downloadedGameId = null; _downloadImportState = DownloadImportState.None;
+        }
         _download = download;
         NotifyDownload();
         if (finishedNow)
@@ -660,36 +679,61 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task ImportDownloadAsync(DownloadSnapshot download)
     {
+        SetDownloadImport(download, DownloadImportState.Queued, "Скачано. Ожидает добавления в библиотеку…");
         // A running operation finishes first; downloads never interrupt eX.
-        while (IsBusy && !_disposed) await Task.Delay(300);
-        if (_disposed) return;
-        // A completed download stays on disk while the launcher is minimized. Large ZIP
-        // extraction and artwork scanning resume when the user restores the launcher.
-        while (_foregroundResume is { } resume)
+        // Recheck after foreground restoration because another operation may have started.
+        while (!_disposed)
         {
-            _downloadNote = "Скачано. Добавление в библиотеку продолжится после открытия лаунчера.";
-            NotifyDownload();
-            await resume.Task;
-            if (_disposed) return;
+            if (IsBusy) { await Task.Delay(300); continue; }
+            // Keep the completed file on disk while the launcher is minimized.
+            if (_foregroundResume is { } resume)
+            {
+                SetDownloadImport(download, DownloadImportState.Queued,
+                    "Скачано. Добавление продолжится после открытия лаунчера.");
+                await resume.Task;
+                continue;
+            }
+            break;
         }
+        if (_disposed) return;
+        bool imported = false, cancelled = false;
+        SetDownloadImport(download, DownloadImportState.Running, "Скачано. Добавляю в библиотеку…");
         await PerformAsync("Добавляю скачанную игру в библиотеку…", async ct =>
         {
-            // Like Steam: games the launcher fetched from the Dustore store open without the
-            // Gatekeeper prompt. Anything offered by another site keeps macOS's usual checks.
-            if (IsTrustedStorePage(download.SourcePage)) MacQuarantine.RemoveFromStoreDownload(download.Path);
-            var entry = await _services.AddGameAsync(download.Path, ct);
-            await ReloadLibraryAsync(ct, SelectedGame?.Entry.Id ?? entry.Id);
-            _downloadedGameId = entry.Id;
-            _downloadNote = entry.CanLaunchOnMac ? "Готово: игра в библиотеке и готова к запуску." : "Готово: игра в библиотеке. Для Mac перенесите её через eX.";
-            Status = _downloadNote;
+            try
+            {
+                ct.ThrowIfCancellationRequested();
+                // Preserve the existing trusted-store handling; other downloads keep their checks.
+                if (IsTrustedStorePage(download.SourcePage)) MacQuarantine.RemoveFromStoreDownload(download.Path);
+                var entry = await _services.AddGameAsync(download.Path, ct);
+                await ReloadLibraryAsync(ct, SelectedGame?.Entry.Id ?? entry.Id);
+                imported = true;
+                string note = entry.CanLaunchOnMac ? "Готово: игра в библиотеке и готова к запуску."
+                    : "Готово: игра в библиотеке. Для Mac перенесите её через eX.";
+                SetDownloadImport(download, DownloadImportState.Ready, note, entry.Id);
+                Status = note;
+            }
+            catch (OperationCanceledException) { cancelled = true; throw; }
         });
-        if (_downloadedGameId is null && HasError) _downloadNote = "Скачано, но не добавлено: " + Error;
+        if (!imported)
+            SetDownloadImport(download, cancelled ? DownloadImportState.Cancelled : DownloadImportState.Failed,
+                cancelled ? "Добавление отменено. Скачанный файл сохранён; его можно добавить снова."
+                    : "Скачано, но не добавлено: " + (HasError ? Error : "операция не завершена") + ". Повторите добавление.");
+    }
+
+    private void SetDownloadImport(DownloadSnapshot download, DownloadImportState state, string note, Guid? gameId = null)
+    {
+        // A previous import may finish while a newer download is shown. Its library entry
+        // stays valid, but it must not replace the newer download's state or selected result.
+        if (_disposed || _download?.Id != download.Id) return;
+        _downloadImportState = state; _downloadNote = note;
+        if (gameId is not null) _downloadedGameId = gameId;
         NotifyDownload();
     }
 
     private void NotifyDownload()
     {
-        foreach (string property in new[] { nameof(HasDownload), nameof(DownloadRunning), nameof(DownloadReady), nameof(DownloadName), nameof(DownloadPercent), nameof(DownloadText), nameof(DownloadCanRetry), nameof(DownloadIndeterminate) })
+        foreach (string property in new[] { nameof(HasDownload), nameof(DownloadRunning), nameof(DownloadReady), nameof(DownloadName), nameof(DownloadPercent), nameof(DownloadText), nameof(DownloadCanRetry), nameof(DownloadCanRetryImport), nameof(DownloadIndeterminate) })
             Notify(property);
     }
 
@@ -934,7 +978,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             await _services.LaunchAsync(entry, ct);
             if (Edition.IsPrime && entry.Ultra) YieldToGameRequested?.Invoke(this, EventArgs.Empty);
             await ReloadLibraryAsync(ct, entry.Id);
-            Status = GameSessions.Find(entry.Id) is not null ? "Игра запущена." : "Игра передана macOS для запуска.";
+            Status = GameSessions.Find(entry.Id) is not null || NativeAppSessions.Find(entry.Id) is not null ? "Игра запущена." : "Игра передана macOS для запуска.";
         });
         if (_launchingId == entry.Id) _launchingId = null;
         NotifyLaunch();
@@ -972,6 +1016,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         foreach (string property in new[] { nameof(LibraryCount), nameof(HasGames), nameof(IsLibraryEmpty), nameof(CountAll), nameof(CountReady), nameof(CountEx), nameof(HeaderSubtitle), nameof(ShowSearch), nameof(ShelfEmpty) })
             Notify(property);
         RequestCoverLoad();
+    }
+
+    internal void ShowRunningGame(Guid id)
+    {
+        Search = ""; Shelf = "all"; Section = "library"; SelectVisibleGame(id); NotifyLaunch();
     }
 
     private void RequestCoverLoad()
@@ -1121,6 +1170,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_disposed) return; _disposed = true;
         GameSessions.Changed -= OnGameSessionChanged;
+        NativeAppSessions.Changed -= OnGameSessionChanged;
         _coverLoad?.Cancel(); _coverLoad?.Dispose(); _coverLoad = null;
         _foregroundResume?.TrySetResult(); _foregroundResume = null;
         _operation?.Cancel();

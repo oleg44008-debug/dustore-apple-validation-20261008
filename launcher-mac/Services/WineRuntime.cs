@@ -238,6 +238,7 @@ public static class WineRuntime
     internal static async Task<(int Code, string Output)> RunAsync(string tool, IEnumerable<string> arguments, IDictionary<string, string>? environment,
         TimeSpan timeout, CancellationToken cancellation)
     {
+        cancellation.ThrowIfCancellationRequested();
         var start = new ProcessStartInfo(tool)
         {
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true, UseShellExecute = false
@@ -256,9 +257,12 @@ public static class WineRuntime
         catch (OperationCanceledException)
         {
             try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            if (cancellation.IsCancellationRequested) throw new OperationCanceledException(cancellation);
             throw new TimeoutException($"{Path.GetFileName(tool)} не ответил за {timeout.TotalSeconds:0} с. Вывод: " + Tail(output));
         }
         await Task.WhenAny(readers, Task.Delay(TimeSpan.FromSeconds(5), CancellationToken.None));
+        limit.Cancel(); // A surviving wineserver pipe must not retain an unbounded detached reader.
+        await readers;
         lock (output) return (process.ExitCode, output.ToString());
     }
 
@@ -268,10 +272,15 @@ public static class WineRuntime
         try
         {
             for (int read; (read = await reader.ReadAsync(buffer.AsMemory(), cancellation)) > 0;)
-                lock (output) output.Append(buffer, 0, read);
+                lock (output)
+                {
+                    output.Append(buffer, 0, read);
+                    if (output.Length > 512 * 1024) output.Remove(0, output.Length - 512 * 1024);
+                }
         }
         catch (OperationCanceledException) { }
         catch (IOException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private static string Tail(System.Text.StringBuilder output)
