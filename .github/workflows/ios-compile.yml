@@ -33,6 +33,7 @@ jobs:
         run: python3 ci/verify_source.py --out reports/compiler
       - name: Prepare actual Apple toolchain and generate project
         run: |
+          set -euo pipefail
           xcodebuild -version | tee reports/compiler/xcode.txt
           command -v xcodegen >/dev/null || brew install xcodegen
           xcodegen --version | tee reports/compiler/xcodegen.txt
@@ -40,10 +41,12 @@ jobs:
           xcodegen generate
       - name: Compile current app source against the real iOS simulator SDK
         run: |
+          set -euo pipefail
           xcodebuild -project ios/DustoreX.xcodeproj -scheme 'DustoreX-${{ matrix.edition }}' \
             -configuration '${{ matrix.edition }}Debug' -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath reports/compiler/DerivedData CODE_SIGNING_ALLOWED=NO build \
             2>&1 | tee reports/compiler/build.log
+          grep -q '^\*\* BUILD SUCCEEDED \*\*$' reports/compiler/build.log
       - name: Upload compiler evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
