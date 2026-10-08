@@ -2,6 +2,13 @@ name: Intel Wine bootstrap diagnosis
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Bounded native diagnostic using independent owned prefixes
+        type: choice
+        options: [variants, environment-pair]
+        default: variants
+        required: true
 
 permissions:
   contents: read
@@ -20,13 +27,13 @@ jobs:
         with:
           persist-credentials: false
       - name: Probe pinned runtime using bounded owned fixtures
-        run: python3 ci/intel_wine_native.py --variants
+        run: python3 ci/intel_wine_native.py --${{ inputs.mode }}
       - name: Upload curated diagnostic evidence only
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: intel-wine-phase2
-          path: artifacts/intel-wine-phase2/
+          name: intel-wine-${{ inputs.mode == 'environment-pair' && 'environment' || 'phase2' }}
+          path: artifacts/intel-wine-${{ inputs.mode == 'environment-pair' && 'environment' || 'phase2' }}/
           if-no-files-found: error
           retention-days: 30
           compression-level: 0

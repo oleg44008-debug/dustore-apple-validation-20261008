@@ -11,14 +11,17 @@ import shutil
 import sys
 from native_helpers import NativeRun, ROOT
 
-HELPER_SHA = "afe409853ac393ac7f2e3408180022de8a3fb718659e7ee96df3b6ae909c3589"
+HELPER_SHA = "2ff5e2a418622e979ca87af4663a38475147910c07e9cd2f392c13d8254ad09f"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variants", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--variants", action="store_true")
+    mode.add_argument("--environment-pair", action="store_true")
     args = parser.parse_args()
-    run = NativeRun("intel-wine-phase2" if args.variants else "intel-wine-diagnostic")
+    run = NativeRun("intel-wine-environment" if args.environment_pair else
+                    "intel-wine-phase2" if args.variants else "intel-wine-diagnostic")
     helper = ROOT / "ci/diagnose_intel_wine.py"
     # Runtime binaries and prefixes stay outside NativeRun's curated report tree.
     probes = ROOT / "owned-diagnostics/intel-wine"
@@ -27,6 +30,7 @@ def main() -> int:
                         "productionSourceModified": False, "exactCoreModified": False,
                         "graphicsDeviceCreated": False, "gameFpsMeasured": False,
                         "diagnosticVariants": args.variants,
+                        "controlledEnvironmentPair": args.environment_pair,
                         "rendererDisableVariantsShipped": False})
     try:
         if not run.check("actual native Intel host", platform.system() == "Darwin" and platform.machine() == "x86_64"):
@@ -48,6 +52,8 @@ def main() -> int:
         command = [sys.executable, str(helper), "--out", str(probes)]
         if args.variants:
             command.append("--variants")
+        elif args.environment_pair:
+            command.append("--environment-pair")
         run.run("bounded-owner-Wine-probe", command, 1500, env=native_env)
     except Exception as error:
         run.check("native diagnostic infrastructure completed", False, f"{type(error).__name__}: {error}")

@@ -25,6 +25,13 @@ DXVK_URL = "https://github.com/Gcenx/DXVK-macOS/releases/download/v1.10.3-202305
 DXVK_HASH = "810b1e5caf8ce975b784fae866a130ad23fa0ea233b0e5609cbc4a45f3ef6f00"
 DXVK_BYTES = 2785833
 TOKEN = "DUSTORE-INTEL-DIAGNOSTIC-OK"
+NATIVE_ENVIRONMENT_KEYS = {"HOME", "USER", "LOGNAME", "LANG", "LC_CTYPE", "LC_ALL", "TMPDIR",
+                           "__CF_USER_TEXT_ENCODING", "SECURITYSESSIONID"}
+
+
+def environment_bytes(environment: dict[str, str]) -> int:
+    """Size only. Never write inherited values or credential-bearing names."""
+    return sum(len((key + "=" + value).encode("utf-8")) + 1 for key, value in environment.items())
 
 
 def download(url: str, expected: str, size: int, path: Path) -> None:
@@ -99,7 +106,10 @@ class Diagnostic:
             process.wait(timeout=10)
         record = {"stage": name, "command": args, "processId": process.pid, "exitCode": process.returncode,
                   "timedOut": timed_out, "elapsedSeconds": round(time.monotonic() - watch, 3), "log": output.name,
-                  "tokenSeen": TOKEN in output.read_text(errors="replace")}
+                  "tokenSeen": TOKEN in output.read_text(errors="replace"),
+                  "environmentVariableCount": len(effective), "environmentByteCount": environment_bytes(effective),
+                  "benignPaddingBytes": len(effective.get("DUSTORE_TEST_PADDING", "")),
+                  "inheritsActionsEnvironment": any(key.startswith(("GITHUB_", "ACTIONS_", "RUNNER_")) for key in effective)}
         self.steps.append(record)
         self.save()
         # Process names only: neither full environment nor token-bearing CI command lines are captured.
@@ -150,6 +160,7 @@ class Diagnostic:
             "wrapperIsCoreScriptReproduction": self.wrapper_reproduced, "dxvkConnected": self.dxvk_connected,
             "gstreamerFrameworkPresent": Path("/Library/Frameworks/GStreamer.framework").exists(),
             "inheritedSyncEnvironment": {key: self.environment.get(key) for key in ("WINEMSYNC", "WINEESYNC", "WINEFSYNC")},
+            "baseEnvironmentVariableCount": len(self.environment), "baseEnvironmentByteCount": environment_bytes(self.environment),
             "graphicsDeviceCreated": False, "gameFpsMeasured": False, "steps": self.steps}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -172,13 +183,22 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--runtime-only", action="store_true")
     parser.add_argument("--variants", action="store_true", help="Short runtime phase-2 probes; no wrapper or DXVK mutation")
+    parser.add_argument("--environment-pair", action="store_true", help="Minimal child environment versus own benign padding; no host-value dump")
     args = parser.parse_args()
+    if args.environment_pair and (args.variants or args.runtime_only):
+        parser.error("--environment-pair must be used independently of other diagnostic modes")
     if platform.system() != "Darwin":
         parser.error("This diagnostic must execute on an actual macOS host")
     root = Path(args.out).resolve() / ("owned-intel-wine-" + uuid.uuid4().hex)
     root.mkdir(parents=True, exist_ok=False)
     probe = Diagnostic(root)
-    probe.mode = "rawVariants" if args.variants else "bootstrap"
+    probe.mode = "environmentPair" if args.environment_pair else "rawVariants" if args.variants else "bootstrap"
+    if args.environment_pair:
+        # Only native identity/locale/temp values survive. Controlled padding is
+        # the only changed independent variable; no host secrets enter Wine trace.
+        probe.environment = {key: value for key, value in os.environ.items() if key in NATIVE_ENVIRONMENT_KEYS}
+        probe.environment.update({"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "WINEDEBUG": "err+all,warn+all,trace+process,trace+module",
+                                  "WINEDLLOVERRIDES": "mscoree,mshtml="})
     probe.run("host", ["/usr/bin/sw_vers"], 10)
     probe.run("cpu-capabilities", ["/usr/sbin/sysctl", "hw.optional.avx1_0", "hw.optional.avx2_0", "hw.model"], 10)
     probe.run("notification", ["/usr/bin/osascript", "-e", 'display notification "Owned DUSTORE runtime diagnostic" with title "DUSTORE CI"'], 15)
@@ -194,6 +214,24 @@ def main() -> int:
     probe.run("wine-native-architecture", ["/usr/bin/file", str(wine)], 10)
     probe.run("wine-native-dependencies", ["/usr/bin/otool", "-L", str(wine)], 10)
     probe.run("wine-version", [str(wine), "--version"], 20)
+    if args.environment_pair:
+        # WineHQ bug 60185 is an unconfirmed lead, not evidence of our cause:
+        # https://list.winehq.org/hyperkitty/list/wine-bugs@list.winehq.org/thread/6KTCKCQL6EJQ7KA4QK25I3ABBP4LEXWE/
+        # Repeat a small control after padding to separate this factor from host
+        # load or previous Wine prefix state. Every stage owns a fresh prefix.
+        for name, padding in (("minimal-small-before", 0), ("minimal-padding-5000", 5000),
+                              ("minimal-padding-16000", 16000), ("minimal-small-after", 0)):
+            prefix = root / ("prefix-" + name)
+            env = probe.prefix_environment(prefix)
+            if padding:
+                env["DUSTORE_TEST_PADDING"] = "A" * padding
+            try:
+                probe.run(name, [str(wine), "cmd", "/c", "echo", TOKEN], 60, env, sample=True)
+            finally:
+                probe.stop_prefix(name, prefix)
+        probe.save()
+        print(json.dumps({"diagnosticReport": str(root / "diagnostic.json"), "steps": len(probe.steps)}, indent=2))
+        return 0
     if args.variants:
         # A disabled renderer is diagnostic evidence only. Never ship that
         # environment or use it to label the production GPU path as verified.
