@@ -77,17 +77,41 @@ def main() -> int:
         run.run("preflight-simulator-signing-diagnostic", ["codesign", "-dvv", str(simulator_app)], 60, required=False)
         if not run.run("preflight-owned-app-install", ["xcrun", "simctl", "install", phone_id, str(simulator_app)], 120):
             raise RuntimeError("The owned native debug app did not install.")
-        launched = run.run("preflight-owned-app-launch", ["xcrun", "simctl", "launch", "--terminate-running-process",
+        # This freshly installed app has never run on our new simulator. Asking
+        # SpringBoard to terminate a nonexistent process can stall cold launch.
+        launch_command = ["xcrun", "simctl", "launch",
                 "--stdout=" + str(run.out / "preflight-app-stdout.txt"), "--stderr=" + str(run.out / "preflight-app-stderr.txt"),
-                phone_id, "ru.dustore.launcher.ios", "-dustoreUITest", "-dustoreFixture", "empty", "-dustoreOfflineStore"], 60, source, env)
+                phone_id, "ru.dustore.launcher.ios", "-dustoreUITest", "-dustoreFixture", "empty", "-dustoreOfflineStore"]
+        launched = run.run("preflight-owned-app-launch", launch_command, 60, source, env, required=False)
         time.sleep(3)
+        def app_services():
+            result = subprocess.run(["xcrun", "simctl", "spawn", phone_id, "launchctl", "list"], capture_output=True, text=True, timeout=60)
+            services = [line for line in result.stdout.splitlines() if "ru.dustore.launcher.ios" in line]
+            alive = result.returncode == 0 and any(line.split()[0].isdigit() and int(line.split()[0]) > 0 for line in services)
+            return services, alive, result.returncode
+        services, alive, service_code = app_services()
+        attempts = [{"commandCompleted": launched, "appAlive": alive, "services": services}]
+        if not launched and not alive:
+            run.run("preflight-first-launch-screen", ["xcrun", "simctl", "io", phone_id, "screenshot", str(run.out / "preflight-first-launch-screen.png")], 60, required=False)
+            run.run("preflight-first-launch-system-log", ["xcrun", "simctl", "spawn", phone_id, "log", "show", "--last", "3m",
+                    "--style", "compact", "--predicate", 'process == "DustoreX" OR eventMessage CONTAINS[c] "ru.dustore.launcher.ios"'], 150, required=False)
+            crash_roots = [Path.home() / "Library/Logs/DiagnosticReports",
+                    Path.home() / "Library/Developer/CoreSimulator/Devices" / phone_id / "data/Library/Logs/CrashReporter"]
+            crashes = [p for root in crash_roots if root.is_dir() for p in root.glob("DustoreX*")
+                    if p.is_file() and p.suffix in {".ips", ".crash"} and p.stat().st_mtime >= run_started]
+            attempts[0]["ownedAppCrashDetected"] = bool(crashes)
+            if not crashes:
+                # One bounded retry for a command that never created an app.
+                # A launched app that crashes is never retried into a false pass.
+                launched = run.run("preflight-owned-app-launch-retry", launch_command, 120, source, env, required=False)
+                time.sleep(3)
+                services, alive, service_code = app_services()
+                attempts.append({"commandCompleted": launched, "appAlive": alive, "services": services})
+        run.details["directLaunchAttempts"] = attempts
         run.run("preflight-native-screen", ["xcrun", "simctl", "io", phone_id, "screenshot", str(run.out / "preflight-native-screen.png")], 60)
         run.run("preflight-owned-app-system-log", ["xcrun", "simctl", "spawn", phone_id, "log", "show", "--last", "3m",
                 "--style", "compact", "--predicate", 'process == "DustoreX" OR eventMessage CONTAINS[c] "ru.dustore.launcher.ios"'], 150, required=False)
-        result = subprocess.run(["xcrun", "simctl", "spawn", phone_id, "launchctl", "list"], capture_output=True, text=True, timeout=60)
-        services = [line for line in result.stdout.splitlines() if "ru.dustore.launcher.ios" in line]
-        alive = result.returncode == 0 and any(line.split()[0].isdigit() and int(line.split()[0]) > 0 for line in services)
-        run.check("native app remains alive after direct launch", launched and alive, {"services": services, "exitCode": result.returncode})
+        run.check("native app remains alive after direct launch", launched and alive, {"services": services, "exitCode": service_code, "attempts": attempts})
         if not launched or not alive:
             raise RuntimeError("The app failed native launch before XCTest; inspect preflight stderr/system log.")
         run.run("preflight-owned-app-stop", ["xcrun", "simctl", "terminate", phone_id, "ru.dustore.launcher.ios"], 60)
