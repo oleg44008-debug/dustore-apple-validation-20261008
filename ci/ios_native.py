@@ -108,16 +108,18 @@ def main() -> int:
             services = [line for line in result.stdout.splitlines() if "ru.dustore.launcher.ios" in line]
             alive = result.returncode == 0 and any(line.split()[0].isdigit() and int(line.split()[0]) > 0 for line in services)
             return services, alive, result.returncode
+        def owned_app_crashes():
+            roots = [Path.home() / "Library/Logs/DiagnosticReports",
+                     Path.home() / "Library/Developer/CoreSimulator/Devices" / phone_id / "data/Library/Logs/CrashReporter"]
+            return [path for root in roots if root.is_dir() for path in root.glob("DustoreX*")
+                    if path.is_file() and path.suffix in {".ips", ".crash"} and path.stat().st_mtime >= run_started]
         services, alive, service_code = app_services()
         attempts = [{"commandCompleted": launched, "appAlive": alive, "services": services}]
         if not launched and not alive:
             run.run("preflight-first-launch-screen", ["xcrun", "simctl", "io", phone_id, "screenshot", str(run.out / "preflight-first-launch-screen.png")], 60, required=False)
             run.run("preflight-first-launch-system-log", ["xcrun", "simctl", "spawn", phone_id, "log", "show", "--last", "3m",
                     "--style", "compact", "--predicate", 'process == "DustoreX" OR eventMessage CONTAINS[c] "ru.dustore.launcher.ios"'], 150, required=False)
-            crash_roots = [Path.home() / "Library/Logs/DiagnosticReports",
-                    Path.home() / "Library/Developer/CoreSimulator/Devices" / phone_id / "data/Library/Logs/CrashReporter"]
-            crashes = [p for root in crash_roots if root.is_dir() for p in root.glob("DustoreX*")
-                    if p.is_file() and p.suffix in {".ips", ".crash"} and p.stat().st_mtime >= run_started]
+            crashes = owned_app_crashes()
             attempts[0]["ownedAppCrashDetected"] = bool(crashes)
             if not crashes:
                 # One bounded retry for a command that never created an app.
@@ -130,8 +132,19 @@ def main() -> int:
         run.run("preflight-native-screen", ["xcrun", "simctl", "io", phone_id, "screenshot", str(run.out / "preflight-native-screen.png")], 60)
         run.run("preflight-owned-app-system-log", ["xcrun", "simctl", "spawn", phone_id, "log", "show", "--last", "3m",
                 "--style", "compact", "--predicate", 'process == "DustoreX" OR eventMessage CONTAINS[c] "ru.dustore.launcher.ios"'], 150, required=False)
-        run.check("native app remains alive after direct launch", launched and alive, {"services": services, "exitCode": service_code, "attempts": attempts})
-        if not launched or not alive:
+        # simctl's cold-launch request can time out after it has successfully
+        # created our installed process. Re-read the actual owned service after
+        # the screenshot/log diagnostics; command completion is retained above
+        # as infrastructure evidence, never substituted for the live app state.
+        services, alive, service_code = app_services()
+        crashed = bool(owned_app_crashes())
+        ready = alive and not crashed
+        run.details["directLaunchReadiness"] = {"ready": ready, "services": services,
+                "appAlive": alive, "ownedAppCrashDetected": crashed, "launcherCommandCompleted": launched,
+                "basis": "Live PID of our exact installed bundle on the newly created owned simulator; no new app crash. Actual XCTest assertions follow."}
+        run.check("native app remains alive after direct launch", ready,
+                {"services": services, "exitCode": service_code, "attempts": attempts, "ownedAppCrashDetected": crashed})
+        if not ready:
             raise RuntimeError("The app failed native launch before XCTest; inspect preflight stderr/system log.")
         run.run("preflight-owned-app-stop", ["xcrun", "simctl", "terminate", phone_id, "ru.dustore.launcher.ios"], 60)
         phone_pass = run.run("iphone-build-analyze-unit-ui", ["bash", "Scripts/validate-apple.sh"], 2100, source, env)

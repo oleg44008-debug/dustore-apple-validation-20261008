@@ -69,25 +69,37 @@ final class CoreTests: XCTestCase {
         let view = WKWebView(frame: .zero)
         let loaded = expectation(description: "owned page loaded")
         let delegate = PageDelegate(loaded: loaded)
+        defer {
+            view.stopLoading(); view.navigationDelegate = nil
+            withExtendedLifetime(delegate) {}
+        }
         view.navigationDelegate = delegate
         view.loadHTMLString("<canvas tabindex='0'></canvas><script>window.events=[];document.addEventListener('keydown',e=>events.push(e.type+':'+e.code+':'+e.keyCode));document.addEventListener('keyup',e=>events.push(e.type+':'+e.code+':'+e.keyCode));</script>", baseURL: nil)
         await fulfillment(of: [loaded], timeout: 15)
+        XCTAssertTrue(delegate.finished, "The owned page must finish loading before testing actual keyboard events.")
+        guard delegate.finished else { return }
         _ = try await view.evaluateJavaScript(GameInput.bridgeScript)
         _ = try await bridge(view, keys: ["ArrowUp", "Space"])
         _ = try await bridge(view, keys: ["ArrowUp", "Space"])
         _ = try await bridge(view, keys: [])
         let events = try await view.evaluateJavaScript("window.events") as? [String]
         XCTAssertEqual(events, ["keydown:ArrowUp:38", "keydown:Space:32", "keyup:ArrowUp:38", "keyup:Space:32"])
-        view.navigationDelegate = nil
     }
     @MainActor
     func testNativeInputOwnershipAndFinalCloseIgnoreLateActions() async throws {
         let view = WKWebView(frame: .zero)
         let loaded = expectation(description: "owned input-lifecycle page loaded")
         let delegate = PageDelegate(loaded: loaded)
+        // WKWebView holds this delegate weakly; retain it across every suspension.
+        defer {
+            view.stopLoading(); view.navigationDelegate = nil
+            withExtendedLifetime(delegate) {}
+        }
         view.navigationDelegate = delegate
         view.loadHTMLString("<canvas tabindex='0'></canvas><script>window.events=[];document.addEventListener('keydown',e=>events.push(e.type+':'+e.code));document.addEventListener('keyup',e=>events.push(e.type+':'+e.code));</script>", baseURL: nil)
         await fulfillment(of: [loaded], timeout: 15)
+        XCTAssertTrue(delegate.finished, "The owned lifecycle page must finish loading before testing held input and final close.")
+        guard delegate.finished else { return }
         _ = try await view.evaluateJavaScript(GameInput.bridgeScript)
         let input = GameInput(); input.webView = view
         var publications = 0
@@ -112,7 +124,6 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(events, ["keydown:Space", "keyup:Space"], "Final close must deliver one actual release without duplicate or late presses.")
         XCTAssertEqual(publications, 0, "Internal key ownership must not publish into a SwiftUI teardown transaction.")
         withExtendedLifetime(subscription) {}
-        view.navigationDelegate = nil
     }
     @MainActor
     private func bridge(_ view: WKWebView, keys: [String]) async throws -> Any {
@@ -126,6 +137,7 @@ final class CoreTests: XCTestCase {
 
 private final class PageDelegate: NSObject, WKNavigationDelegate {
     let loaded: XCTestExpectation
+    private(set) var finished = false
     init(loaded: XCTestExpectation) { self.loaded = loaded }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded.fulfill() }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finished = true; loaded.fulfill() }
 }

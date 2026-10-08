@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "foundation explicit accessibility-size iPad native TabView + all-four-route hittability freeze 2026-10-08 C4796DD3 / 15AAA89B",
-      "snapshottedAtUtc": "2026-10-08T13:58:37.118195+00:00"
+      "milestone": "foundation explicit maxtext iPad tabs C4796DD3 + owned WK delegate lifecycle test-only0D352CA4 freeze 2026-10-08,15s/input arrays unchanged",
+      "snapshottedAtUtc": "2026-10-08T14:22:41.598378+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -205,8 +205,8 @@
       "path": "ios/Tests/CoreTests.swift",
       "source": "DustoreIOS/Tests/CoreTests.swift",
       "platform": "ios",
-      "bytes": 8023,
-      "sha256": "60c417e1a22283de5c5d869055c4a0b533af4f72570f308b56a90f23631da36f"
+      "bytes": 8700,
+      "sha256": "0d352ca4f779ed62eafebe7529d7e96bc06f66103cd434a79609a5ade7659299"
     },
     {
       "path": "ios/Tests/StoreDownloadTests.swift",
