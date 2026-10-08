@@ -11,8 +11,8 @@ import shutil
 import sys
 from native_helpers import NativeRun, ROOT
 
-HELPER_SHA = "4aa826c25246eabb2eb1829c9acb0241472eb38e5c2ff3fa9202d400b1b2aa55"
-NATIVE_FIXTURE_SHA = "5b5818f972c6853dd0ed1bf3713859db21cb96d5fac37e7cb322e8a67e35bde2"
+HELPER_SHA = "9554b42edc364e2a71bc5574823a866d02b3bf5df9d4ff846664db41cccf218d"
+NATIVE_FIXTURE_SHA = "01990e4ae6db577f2506966ba849dd55202180f2ef0e33a8170ca53d8b6dd080"
 
 
 def main() -> int:
@@ -21,8 +21,10 @@ def main() -> int:
     mode.add_argument("--variants", action="store_true")
     mode.add_argument("--environment-pair", action="store_true")
     mode.add_argument("--native-vulkan", action="store_true")
+    mode.add_argument("--native-vulkan-debugger", action="store_true")
     args = parser.parse_args()
-    run = NativeRun("intel-wine-native-vulkan" if args.native_vulkan else
+    run = NativeRun("intel-wine-native-vulkan-debugger" if args.native_vulkan_debugger else
+                    "intel-wine-native-vulkan" if args.native_vulkan else
                     "intel-wine-environment" if args.environment_pair else
                     "intel-wine-phase2" if args.variants else "intel-wine-diagnostic")
     helper = ROOT / "ci/diagnose_intel_wine.py"
@@ -34,7 +36,8 @@ def main() -> int:
                         "graphicsDeviceCreated": False, "gameFpsMeasured": False,
                         "diagnosticVariants": args.variants,
                         "controlledEnvironmentPair": args.environment_pair,
-                        "nativeVulkanAbiIsolation": args.native_vulkan,
+                        "nativeVulkanAbiIsolation": args.native_vulkan or args.native_vulkan_debugger,
+                        "ownedNativeDebugger": args.native_vulkan_debugger,
                         "logicalDeviceCreated": False, "surfaceCreated": False,
                         "rendererDisableVariantsShipped": False})
     try:
@@ -42,7 +45,7 @@ def main() -> int:
             raise RuntimeError("The probe requires an actual Intel Mac host.")
         if not run.check("owner helper byte-identical", hashlib.sha256(helper.read_bytes()).hexdigest() == HELPER_SHA):
             raise RuntimeError("The diagnostic helper differs from the owner's frozen version.")
-        if args.native_vulkan:
+        if args.native_vulkan or args.native_vulkan_debugger:
             fixture = helper.with_name("native_vulkan_probe.c")
             if not run.check("owner native ABI fixture byte-identical",
                              hashlib.sha256(fixture.read_bytes()).hexdigest() == NATIVE_FIXTURE_SHA):
@@ -66,6 +69,8 @@ def main() -> int:
             command.append("--environment-pair")
         elif args.native_vulkan:
             command.append("--native-vulkan")
+        elif args.native_vulkan_debugger:
+            command.append("--native-vulkan-debugger")
         run.run("bounded-owner-Wine-probe", command, 1500, env=native_env)
     except Exception as error:
         run.check("native diagnostic infrastructure completed", False, f"{type(error).__name__}: {error}")

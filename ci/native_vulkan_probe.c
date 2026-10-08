@@ -12,6 +12,7 @@
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
+#include <unistd.h>
 
 typedef int32_t VkResult;
 typedef struct VkInstance_T *VkInstance;
@@ -120,6 +121,8 @@ int main(int argc, char **argv)
     if (argc != 3) { fprintf(stderr, "Usage: native_vulkan_probe <owned-library> <owned-root>\n"); return 64; }
     start_time = monotonic_seconds();
     setvbuf(stdout, NULL, _IOLBF, 0);
+    printf("DUSTORE_NATIVE_VULKAN {\"stage\":\"process-identity\",\"pid\":%ld,\"executable\":", (long)getpid());
+    json_string(argv[0]); printf("}\n"); fflush(stdout);
     stage("dlopen", "begin", 0);
     void *library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (!library)
@@ -143,9 +146,10 @@ int main(int argc, char **argv)
     if (!properties) { stage("extension-allocation", "error", -1); dlclose(library); return 4; }
     result = extensions(NULL, &extension_count, properties);
     if (result) { stage("vkEnumerateInstanceExtensionProperties", "error", result); free(properties); dlclose(library); return 4; }
-    const char *requested[] = {"VK_KHR_get_physical_device_properties2", "VK_KHR_external_memory_capabilities",
+    const char *requested[] = {"VK_KHR_external_memory_capabilities", "VK_KHR_external_semaphore_capabilities",
+                              "VK_KHR_get_physical_device_properties2",
                               "VK_KHR_portability_enumeration"};
-    const char *enabled[3];
+    const char *enabled[4];
     uint32_t enabled_count = 0;
     uint32_t flags = 0;
     for (uint32_t i = 0; i < extension_count; ++i)
@@ -154,11 +158,11 @@ int main(int argc, char **argv)
         printf("DUSTORE_NATIVE_VULKAN {\"stage\":\"instance-extension\",\"name\":");
         json_string(properties[i].extensionName); printf(",\"specVersion\":%u}\n", properties[i].specVersion);
     }
-    for (unsigned int j = 0; j < 3; ++j)
+    for (unsigned int j = 0; j < sizeof(requested) / sizeof(requested[0]); ++j)
     {
         int found = 0;
         for (uint32_t i = 0; i < extension_count; ++i) if (!strcmp(properties[i].extensionName, requested[j])) { found = 1; break; }
-        if (found) { enabled[enabled_count++] = requested[j]; if (j == 2) flags |= 1; }
+        if (found) { enabled[enabled_count++] = requested[j]; if (j == 3) flags |= 1; }
         printf("DUSTORE_NATIVE_VULKAN {\"stage\":\"wine-requested-extension\",\"name\":"); json_string(requested[j]);
         printf(",\"available\":%s}\n", found ? "true" : "false");
     }

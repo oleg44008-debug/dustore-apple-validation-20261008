@@ -294,12 +294,13 @@ class NativeVulkanDiagnostic(Diagnostic):
             try:
                 with output.open("wb") as stream:
                     assert process.stdout is not None
-                    while block := process.stdout.read(65536):
+                    while block := process.stdout.read1(65536):
                         state["bytesObserved"] += len(block)
                         available = self.LOG_LIMIT - state["bytesWritten"]
                         if available > 0:
                             chunk = block[:available]
                             stream.write(chunk)
+                            stream.flush()
                             state["bytesWritten"] += len(chunk)
                         if len(block) > available:
                             state["logLimitReached"] = True
@@ -410,7 +411,7 @@ class NativeVulkanDiagnostic(Diagnostic):
         deadline = time.monotonic() + 5
         if record["exitCode"] is not None and record["exitCode"] < 0 and reports.is_dir():
             while time.monotonic() < deadline and not copied:
-                for path in reports.glob("native_vulkan_probe*.ips"):
+                for path in reports.glob("*.ips"):
                     if path.stat().st_size > 16 * 1024 * 1024 or time.time() - path.stat().st_mtime > 90:
                         continue
                     text = path.read_text(errors="replace")
@@ -428,6 +429,81 @@ class NativeVulkanDiagnostic(Diagnostic):
                     time.sleep(0.25)
         record["ownedCrashReports"] = copied
 
+    def cleanup_native_process(self, name: str, record: dict, binary: Path) -> None:
+        """A debugger may leave its own inferior stopped on a separate group."""
+        cleanup = {"stage": name, "ownership": "exact private executable and PID/start identity",
+                   "processes": [], "errors": []}
+        binary = self.owned_path(binary)
+        identities = []
+        for line in (self.root / record["log"]).read_text(errors="replace").splitlines():
+            if not line.startswith("DUSTORE_NATIVE_VULKAN "):
+                continue
+            try:
+                event = json.loads(line.partition(" ")[2])
+            except json.JSONDecodeError:
+                continue
+            if (event.get("stage") == "process-identity" and isinstance(event.get("pid"), int)
+                    and event["pid"] > 1 and event["pid"] != os.getpid()
+                    and event.get("executable") == str(binary)):
+                identities.append(event["pid"])
+        if len(set(identities)) > 1:
+            cleanup["errors"].append("More than one native inferior marker in a single debugger invocation; no PID is killed")
+            identities.clear()
+        cleanup_deadline = time.monotonic() + 20
+        for pid in sorted(set(identities)):
+            entry = {"pid": pid, "executable": str(binary), "status": "not-live-or-not-owned"}
+            try:
+                if time.monotonic() + 15 > cleanup_deadline:
+                    raise subprocess.TimeoutExpired("exact private native cleanup", 20)
+                identity = self.quiet_command(["/bin/ps", "-p", str(pid), "-o", "lstart=,comm="]).stdout.strip()
+                opened = self.quiet_command(["/usr/sbin/lsof", "-a", "-p", str(pid), "-Fn"])
+                if identity and "n" + str(binary) in opened.stdout.splitlines():
+                    entry["identity"] = identity
+                    check = self.quiet_command(["/bin/ps", "-p", str(pid), "-o", "lstart=,comm="]).stdout.strip()
+                    if check == identity:
+                        os.kill(pid, signal.SIGTERM)
+                        entry["status"] = "owned-SIGTERM"
+                        time.sleep(0.2)
+                        check = self.quiet_command(["/bin/ps", "-p", str(pid), "-o", "lstart=,comm="]).stdout.strip()
+                        if check == identity:
+                            os.kill(pid, signal.SIGKILL)
+                            entry["status"] = "owned-SIGKILL"
+                            time.sleep(0.2)
+                            check = self.quiet_command(["/bin/ps", "-p", str(pid), "-o", "lstart=,comm="]).stdout.strip()
+                            if check == identity:
+                                cleanup["errors"].append(f"Exact private native PID {pid} still exists after SIGKILL")
+            except ProcessLookupError:
+                entry["status"] = "exited"
+            except (subprocess.TimeoutExpired, OSError) as error:
+                cleanup["errors"].append(f"PID {pid}: {type(error).__name__}: {error}")
+            cleanup["processes"].append(entry)
+        (self.root / (name + ".cleanup.json")).write_text(json.dumps(cleanup, indent=2), encoding="utf-8")
+        if cleanup["errors"]:
+            self.details["errors"].append("Exact private native inferior cleanup was incomplete")
+        self.finish_logs()
+
+    def native_debugger(self, role: str, binary: Path, library: Path) -> dict:
+        binary, library = self.owned_path(binary), self.owned_path(library)
+        commands = ["settings set target.disable-aslr false", "breakpoint set --name abort", "run",
+                    "thread backtrace all", "image list -o -f", "process kill"]
+        args = ["/usr/bin/xcrun", "lldb", "--batch", "--no-lldbinit"]
+        for command in commands:
+            args.extend(["-o", command])
+        # Real signals also get a backtrace if they precede the abort breakpoint.
+        for command in ("thread backtrace all", "image list -o -f", "process kill"):
+            args.extend(["-k", command])
+        args.extend(["--", str(binary), str(library), str(self.root)])
+        record = self.run_bounded("native-" + role + "-lldb", args, 20)
+        self.cleanup_native_process("native-" + role + "-lldb", record, binary)
+        text = (self.root / record["log"]).read_text(errors="replace")
+        record["debuggerControl"] = {"ownedLaunchOnly": True, "sharedProcessAttached": False,
+            "lldbInitDisabled": True, "abortBreakpointRequested": True,
+            "stackFramesSeen": "frame #0:" in text,
+            "classification": "Debugger stop/backtrace must be read separately from the raw native exit status."}
+        if record["stopReason"] or not record["debuggerControl"]["stackFramesSeen"]:
+            self.details["errors"].append("Bounded native debugger did not produce a readable stop backtrace")
+        return record
+
     def seal(self) -> None:
         self.finish_logs()
         if self.active_logs:
@@ -441,12 +517,18 @@ class NativeVulkanDiagnostic(Diagnostic):
         (self.root / "evidence-sha256.json").write_text(json.dumps({"schema": 1, "files": entries}, indent=2), encoding="utf-8")
 
 
-def native_vulkan_main(out: str) -> int:
+def native_vulkan_main(out: str, debugger: bool = False) -> int:
     if platform.machine() != "x86_64":
         raise RuntimeError("Native Vulkan isolation requires actual Intel x86_64")
     root = Path(out).resolve() / ("owned-intel-wine-" + uuid.uuid4().hex)
     root.mkdir(parents=True, exist_ok=False)
     probe = NativeVulkanDiagnostic(root)
+    if debugger:
+        probe.mode = "nativeVulkanAbortBacktrace"
+        probe.details["nativeDebuggerEnabled"] = True
+        probe.details["timeBoundsSeconds"]["nativeDebugger"] = 20
+        probe.details["timeBoundsSeconds"]["nativeInferiorCleanup"] = 20
+        probe.details["unavailableControls"] = []
     try:
         if platform.mac_ver()[0] != "15.7.9":
             raise RuntimeError("Host macOS differs from the compared Intel 15.7.9 evidence; do not silently compare versions")
@@ -505,7 +587,13 @@ def native_vulkan_main(out: str) -> int:
             # Prefer the exact mapped image over a duplicate bundled dependency.
             values.sort(key=lambda path: (path.resolve() not in mapped, len(str(path))))
             if not values:
-                probe.details["errors"].append(f"Pinned runtime did not contain {basename}")
+                if debugger and role == "vulkan-loader":
+                    # This exact Wine archive loads MoltenVK directly. The old
+                    # run's missing-loader failure remains in its sealed report.
+                    probe.details["unavailableControls"].append({"role": role,
+                        "reason": f"Pinned archive has no {basename}; no replacement loader or ICD is introduced."})
+                else:
+                    probe.details["errors"].append(f"Pinned runtime did not contain {basename}")
                 continue
             library = probe.owned_path(values[0])
             inputs.append((library, role))
@@ -526,6 +614,9 @@ def native_vulkan_main(out: str) -> int:
                     except json.JSONDecodeError:
                         probe.details["errors"].append(f"Malformed fixture event in {record['log']}")
             probe.details["nativeControls"].append({"library": metadata, "run": record, "events": events})
+            if debugger and role == "moltenvk-direct":
+                debug_record = probe.native_debugger(role, binary, library)
+                probe.details["nativeDebuggerRun"] = debug_record
         probe.details["classification"] = "Raw native and Wine results require comparison; an infrastructure pass is not proof the launcher game/graphics path works."
     except Exception as error:
         probe.details["errors"].append(f"{type(error).__name__}: {error}")
@@ -557,15 +648,18 @@ def main() -> int:
     parser.add_argument("--variants", action="store_true", help="Short runtime phase-2 probes; no wrapper or DXVK mutation")
     parser.add_argument("--environment-pair", action="store_true", help="Minimal child environment versus own benign padding; no host-value dump")
     parser.add_argument("--native-vulkan", action="store_true", help="QA-only native Vulkan ABI versus detached Wine SEH/boot capture; no device/surface/game")
+    parser.add_argument("--native-vulkan-debugger", action="store_true", help="Separate QA pass with raw native Vulkan plus bounded own-child abort backtrace; no shared-process attach")
     args = parser.parse_args()
     if args.environment_pair and (args.variants or args.runtime_only):
         parser.error("--environment-pair must be used independently of other diagnostic modes")
-    if args.native_vulkan and (args.environment_pair or args.variants or args.runtime_only):
-        parser.error("--native-vulkan must be used independently of other diagnostic modes")
+    if (args.native_vulkan or args.native_vulkan_debugger) and (args.environment_pair or args.variants or args.runtime_only):
+        parser.error("Native Vulkan diagnostics must be used independently of other diagnostic modes")
+    if args.native_vulkan and args.native_vulkan_debugger:
+        parser.error("Choose one native Vulkan diagnostic mode")
     if platform.system() != "Darwin":
         parser.error("This diagnostic must execute on an actual macOS host")
-    if args.native_vulkan:
-        return native_vulkan_main(args.out)
+    if args.native_vulkan or args.native_vulkan_debugger:
+        return native_vulkan_main(args.out, debugger=args.native_vulkan_debugger)
     root = Path(args.out).resolve() / ("owned-intel-wine-" + uuid.uuid4().hex)
     root.mkdir(parents=True, exist_ok=False)
     probe = Diagnostic(root)
