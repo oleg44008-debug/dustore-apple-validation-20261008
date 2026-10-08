@@ -170,7 +170,7 @@ struct LibraryScreen: View {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     BrandHeader(title: "Ваши игры", subtitle: library.games.isEmpty ? "Коллекция, которая всегда под рукой" : "\(library.games.filter(\.playable).count) готовы к запуску · \(library.games.count) в коллекции").primeArrival()
                     if library.games.isEmpty {
-                        EmptyLibrary(importGame: importGame, openStore: openStore).primeArrival(delay: 0.05)
+                        EmptyLibrary(importGame: importGame, openStore: openStore, showImport: !dynamicType.isAccessibilitySize).primeArrival(delay: 0.05)
                     } else {
                         searchField
                         ViewThatFits(in: .horizontal) { HStack { filters; Spacer(minLength: 6); sortMenu }; VStack(alignment: .leading, spacing: 10) { filters; sortMenu } }
@@ -187,10 +187,21 @@ struct LibraryScreen: View {
                                 ForEach(games) { game in GameCard(game: game) }
                             }
                         }
-                        Button(action: importGame) { Label("Добавить из Файлов", systemImage: "plus").frame(maxWidth: .infinity) }.buttonStyle(PrimePressStyle()).disabled(library.isBusy).accessibilityIdentifier("library.import")
+                        if !dynamicType.isAccessibilitySize {
+                            Button(action: importGame) { Label("Добавить из Файлов", systemImage: "plus").frame(maxWidth: .infinity) }.buttonStyle(PrimePressStyle()).disabled(library.isBusy).accessibilityIdentifier("library.import")
+                        }
                     }
                     Text(library.quotaLine).font(.caption).foregroundColor(Theme.dim).fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: 1200, alignment: .leading).padding(22).frame(maxWidth: .infinity)
+            }.safeAreaInset(edge: .bottom, spacing: 0) {
+                if dynamicType.isAccessibilitySize {
+                    YellowButton(title: "Добавить игру", symbol: "plus", action: importGame)
+                        .disabled(library.isBusy).accessibilityIdentifier("library.import")
+                        .accessibilitySortPriority(1)
+                        .frame(maxWidth: 600).padding(.horizontal, 22).padding(.vertical, 12)
+                        .frame(maxWidth: .infinity).background(Theme.background)
+                        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1).accessibilityHidden(true) }
+                }
             }.background { PrimeBackdrop() }.toolbarBackground(Theme.background, for: .tabBar)
         }
     }
@@ -230,13 +241,15 @@ struct LibraryScreen: View {
 
 private struct EmptyLibrary: View {
     let importGame: () -> Void, openStore: () -> Void
+    var showImport = true
+    @Environment(\.dynamicTypeSize) private var dynamicType
     var body: some View {
         Card {
-            EmptyLibraryArtwork()
+            if !dynamicType.isAccessibilitySize { EmptyLibraryArtwork() }
             Eyebrow(text: "Первое открытие")
             DisplayTitle(text: "Начните свою коллекцию", size: 28)
             Text("Выберите архив игры в Файлах или найдите игру в магазине. eX проверит совместимость и подготовит её к запуску.").font(.subheadline).foregroundColor(Theme.muted).fixedSize(horizontal: false, vertical: true)
-            YellowButton(title: "Добавить игру", symbol: "plus") { importGame() }.accessibilityIdentifier("library.import")
+            if showImport { YellowButton(title: "Добавить игру", symbol: "plus") { importGame() }.accessibilityIdentifier("library.import") }
             Button(action: openStore) { Label("Открыть магазин", systemImage: "bag").frame(maxWidth: .infinity) }.buttonStyle(PrimePressStyle()).accessibilityIdentifier("library.store")
         }
     }

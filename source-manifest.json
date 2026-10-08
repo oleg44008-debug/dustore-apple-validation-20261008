@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "foundation FINAL candidate: persistent Library-owned StoreDownloadSession lifecycle+native WKDownload localhost unit fixture; actual WebKit checked continuation; external CI simulator scheme helper hook+UITest env forwarding;16 Swift grammar+portable bridge pass; native pending; owner freeze2026-10-08",
-      "snapshottedAtUtc": "2026-10-08T11:46:06.894884+00:00"
+      "milestone": "foundation accessibility import freeze: pinned actual import at accessibility Dynamic Type sizes, inline duplicate/artwork omitted; immediate+postswipe hittability assertions strengthened; only Views/UITests/README/VALIDATION changed,16Swift grammar PASS; preserve failed168 native evidence",
+      "snapshottedAtUtc": "2026-10-08T12:18:04.133710+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -142,8 +142,8 @@
       "path": "ios/App/Views.swift",
       "source": "DustoreIOS/App/Views.swift",
       "platform": "ios",
-      "bytes": 32728,
-      "sha256": "ceece6fc053edf6e1410ddac911ce0b86141dd3bf62e52f6f34da0e9cd6ca414"
+      "bytes": 33690,
+      "sha256": "715c33f12f5a3c4eb9b94829ecaf12f91d07d528cba5971b2e4b785cf7658da9"
     },
     {
       "path": "ios/App/WebViews.swift",
@@ -163,8 +163,8 @@
       "path": "ios/README.md",
       "source": "DustoreIOS/README.md",
       "platform": "ios",
-      "bytes": 7151,
-      "sha256": "44cf51214a2747f5523aa555b72038e8094c07d713158b95541b31a291639180"
+      "bytes": 7387,
+      "sha256": "285019cd1c1860f85009960f2132f8909d3f03dce22273a5499022d1169e5bfa"
     },
     {
       "path": "ios/Scripts/package-unsigned-device.sh",
@@ -198,15 +198,15 @@
       "path": "ios/UITests/DustoreUITests.swift",
       "source": "DustoreIOS/UITests/DustoreUITests.swift",
       "platform": "ios",
-      "bytes": 4451,
-      "sha256": "86020d72b4a2dae07df5649a4dfa81f95525691f4d9da5a5a4b369c3f2b3d147"
+      "bytes": 4651,
+      "sha256": "d4bcb8d629de8d3111c6a243f40ed90c64442d9382aba4ebcbf1c3c8418abd0a"
     },
     {
       "path": "ios/VALIDATION.md",
       "source": "DustoreIOS/VALIDATION.md",
       "platform": "ios",
-      "bytes": 3788,
-      "sha256": "b6385b2212527c82f50dc6b2875619ddc90b30251ab1c9a8ee501add22dcb24b"
+      "bytes": 3943,
+      "sha256": "54fc911096fd71c7a2ed7398d89ebd1c7e5ad42411a62b7c16da78704327902d"
     },
     {
       "path": "ios/project.yml",

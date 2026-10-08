@@ -70,8 +70,10 @@ final class DustoreUITests: XCTestCase {
     func testAccessibilityTextStillHasImportAndSettingsActions() {
         let app = launch("empty", largeText: true)
         XCTAssertTrue(app.buttons["library.import"].waitForExistence(timeout: 10))
-        if !app.buttons["library.import"].isHittable { app.swipeUp() }
-        XCTAssertTrue(app.buttons["library.import"].isHittable); capture("10-library-accessibility-text")
+        XCTAssertTrue(app.buttons["library.import"].isHittable, "Large text must keep the primary import action immediately reachable.")
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(app.buttons["library.import"].isHittable, "Scrolling the large-text instructions must preserve the primary import action.")
+        capture("10-library-accessibility-text")
         destination("Настройки", in: app)
         XCTAssertTrue(app.staticTexts["Анимации интерфейса"].waitForExistence(timeout: 5)); capture("11-settings-accessibility-text")
     }
