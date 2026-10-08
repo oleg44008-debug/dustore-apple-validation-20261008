@@ -1,0 +1,9 @@
+DustoreX.xcodeproj/
+Validation/
+.DS_Store
+*.xcuserstate
+*.xcarchive
+*.ipa
+*.mobileprovision
+*.p12
+*.cer

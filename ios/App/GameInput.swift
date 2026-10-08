@@ -36,7 +36,7 @@ final class GameInput: ObservableObject {
         for controller in controllers { controller.extendedGamepad?.valueChangedHandler = nil }
         controllers = GCController.controllers()
         keyboardConnected = GCKeyboard.coalesced != nil
-        controllerName = controllers.first?.vendorName
+        controllerName = controllers.first.map { $0.vendorName ?? "Геймпад" }
         for controller in controllers {
             controller.extendedGamepad?.valueChangedHandler = { [weak self, weak controller] pad, _ in
                 let x = abs(pad.dpad.xAxis.value) > abs(pad.leftThumbstick.xAxis.value) ? pad.dpad.xAxis.value : pad.leftThumbstick.xAxis.value

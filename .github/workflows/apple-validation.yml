@@ -1,0 +1,87 @@
+name: Apple native validation matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Native platform checks to execute for this frozen source commit
+        type: choice
+        options: [all, mac, ios]
+        default: all
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-validation-${{ inputs.scope }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mac:
+    if: inputs.scope != 'ios'
+    name: macOS ${{ matrix.edition }} — ${{ matrix.rid }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [Free, Prime]
+        include:
+          - rid: osx-arm64
+            runner: macos-15
+          - rid: osx-x64
+            runner: macos-15-intel
+        rid: [osx-arm64, osx-x64]
+    runs-on: ${{ matrix.runner }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.424
+      - name: Run actual native Mac validation
+        run: python3 ci/mac_native.py --edition '${{ matrix.edition }}' --rid '${{ matrix.rid }}'
+      - name: Upload native reports, screenshots and signed app packages
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mac-${{ matrix.edition }}-${{ matrix.rid }}
+          path: artifacts/mac-${{ matrix.edition }}-${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+  ios:
+    if: inputs.scope != 'mac'
+    name: iOS ${{ matrix.edition }} — iPhone and iPad
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [Free, Prime]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare project generator
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen --version
+      - name: Run actual Xcode build, analyzer and simulator tests
+        run: python3 ci/ios_native.py --edition '${{ matrix.edition }}'
+      - name: Upload native reports, test results, screenshots and explicitly unsigned packages
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-${{ matrix.edition }}
+          path: artifacts/ios-${{ matrix.edition }}/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

@@ -148,8 +148,7 @@ private struct PlayerMenu: View {
                             .pickerStyle(.segmented)
                         Text("Направления — стрелки или WASD. Действия — пробел, E, Enter и Escape. Поддержка зависит от раскладки самой игры.")
                             .font(.subheadline).foregroundColor(Theme.muted)
-                        Label(session.input.controllerName.map { "Геймпад: \($0)" } ?? "Геймпад не подключён", systemImage: "gamecontroller")
-                            .font(.subheadline).foregroundColor(Theme.selection)
+                        InputConnections(input: session.input)
                         Text("A → пробел · B → E · X → Escape · Y → Enter. Bluetooth-клавиатура работает напрямую через WebKit.")
                             .font(.caption).foregroundColor(Theme.dim)
                     }
@@ -160,5 +159,15 @@ private struct PlayerMenu: View {
             .navigationTitle("Управление").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } } }
         }.preferredColorScheme(.dark).onAppear { session.setActive(false) }
+    }
+}
+
+private struct InputConnections: View {
+    @ObservedObject var input: GameInput
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(input.controllerName.map { "Геймпад: \($0)" } ?? "Геймпад не подключён", systemImage: "gamecontroller")
+            if input.keyboardConnected { Label("Клавиатура подключена", systemImage: "keyboard") }
+        }.font(.subheadline).foregroundColor(Theme.selection)
     }
 }

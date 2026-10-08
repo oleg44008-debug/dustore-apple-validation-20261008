@@ -96,13 +96,14 @@ struct Chip: View {
 
 struct Card<Content: View>: View {
     let content: Content
+    @Environment(\.accessibilityContrast) private var contrast
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) { content }
             .padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(LinearGradient(colors: [Theme.raised, Theme.card], startPoint: .topLeading, endPoint: .bottomTrailing)))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.075), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(contrast == .increased ? 0.3 : 0.075), lineWidth: 1))
     }
 }
 

@@ -349,6 +349,8 @@ struct SettingsScreen: View {
     @AppStorage(Preferences.motion) private var motion = MotionPreference.full.rawValue
     @AppStorage(Preferences.haptics) private var haptics = true
     @AppStorage(Preferences.compactCards) private var compactCards = false
+    @AppStorage("dustore.player.touch-controls") private var touchControls = true
+    @AppStorage("dustore.player.input-preset") private var inputPreset = InputPreset.arrows.rawValue
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -383,6 +385,15 @@ struct SettingsScreen: View {
                         }
                     }.tint(Theme.selection)
                 }.primeArrival(delay: 0.08)
+                Card {
+                    Eyebrow(text: "Игровое управление")
+                    Toggle("Экранные кнопки", isOn: $touchControls).tint(Theme.selection)
+                    Picker("Направления по умолчанию", selection: $inputPreset) {
+                        ForEach(InputPreset.allCases) { Text($0.title).tag($0.rawValue) }
+                    }.pickerStyle(.menu).frame(minHeight: 44)
+                    Text("Настройки можно изменить в меню самой игры. Экранные кнопки и физический геймпад передают клавиши выбранной раскладки; совместимость зависит от игры.")
+                        .font(.subheadline).foregroundColor(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                }.primeArrival(delay: 0.1)
                 Card {
                     HStack(spacing: 12) {
                         Image("BrandMark").resizable().scaledToFit().frame(width: 48, height: 48).accessibilityHidden(true)

@@ -126,6 +126,10 @@ struct StoreWebView: UIViewRepresentable {
         func downloadDidFinish(_ download: WKDownload) {
             guard let record = targets.removeValue(forKey: ObjectIdentifier(download)) else { return }
             record.observation?.invalidate()
+            if record.cancelling || library.transfer?.outcome == .cancelling {
+                library.downloadFailed(id: record.id, error: nil, retry: nil)
+                return
+            }
             Task { @MainActor in await library.importDownloaded(from: record.file, title: record.title, id: record.id) }
         }
         func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
@@ -142,17 +146,22 @@ struct StoreWebView: UIViewRepresentable {
         }
         private func resume(_ data: Data, record: DownloadRecord) {
             guard let view = lastView else { library.message = "Откройте магазин и повторите загрузку."; return }
+            let pending = PendingResume()
+            guard let id = library.beginDownload(title: record.title ?? record.file.lastPathComponent, cancel: { [weak self] in
+                pending.cancelled = true
+                if let download = pending.download { self?.cancel(download) }
+            }) else { return }
             view.resumeDownload(fromResumeData: data) { [weak self] download in
                 guard let self else { return }
                 download.delegate = self
-                guard let id = self.library.beginDownload(title: record.title ?? record.file.lastPathComponent, cancel: { [weak self, weak download] in
-                    if let download { self?.cancel(download) }
-                }) else { download.cancel { _ in }; return }
+                pending.download = download
                 let resumed = DownloadRecord(download: download, file: record.file, title: record.title, id: id)
                 self.targets[ObjectIdentifier(download)] = resumed
                 self.observe(resumed)
+                if pending.cancelled { self.cancel(download) }
             }
         }
+        private final class PendingResume { var cancelled = false; var download: WKDownload? }
         private final class DownloadRecord {
             let download: WKDownload, file: URL, title: String?, id: UUID
             var observation: NSKeyValueObservation?

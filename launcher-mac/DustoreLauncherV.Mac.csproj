@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DustoreLauncherV.Mac</AssemblyName>
+    <RootNamespace>DustoreLauncherV.Mac</RootNamespace>
+    <Product>DUSTORE LAUNCHER V</Product>
+    <AssemblyTitle>DUSTORE LAUNCHER V for macOS</AssemblyTitle>
+    <Company>eXepc</Company>
+    <Version>5.4.0</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Free or Prime; packaging passes -p:DustoreEdition=Prime for the subscriber build. -->
+    <DustoreEdition Condition="'$(DustoreEdition)' == ''">Free</DustoreEdition>
+    <DefineConstants Condition="'$(DustoreEdition)' == 'Prime'">$(DefineConstants);PRIME</DefineConstants>
+    <UseAppHost>true</UseAppHost>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <ConverterCoreProject Condition="'$(ConverterCoreProject)' == '' and Exists('../DustoreX-AutoConverter/src/DustoreX.AutoConverter.Core/DustoreX.AutoConverter.Core.csproj')">../DustoreX-AutoConverter/src/DustoreX.AutoConverter.Core/DustoreX.AutoConverter.Core.csproj</ConverterCoreProject>
+    <ConverterCoreProject Condition="'$(ConverterCoreProject)' == ''">../src/DustoreX.AutoConverter.Core/DustoreX.AutoConverter.Core.csproj</ConverterCoreProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**;obj*/**;bin*/**" />
+    <PackageReference Include="Avalonia" Version="11.3.21" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.21" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.21" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.21" />
+    <ProjectReference Include="$(ConverterCoreProject)" Condition="'$(ConverterCoreAssembly)' == ''" />
+    <Reference Include="DustoreX.AutoConverter.Core" Condition="'$(ConverterCoreAssembly)' != ''"><HintPath>$(ConverterCoreAssembly)</HintPath><Private>true</Private></Reference>
+    <AvaloniaResource Include="Assets/**" />
+    <EmbeddedResource Include="Assets/dustore-logo-original.png" LogicalName="Dustore.original-logo.png" />
+  </ItemGroup>
+</Project>

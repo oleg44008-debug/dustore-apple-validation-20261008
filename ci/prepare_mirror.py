@@ -30,6 +30,8 @@ def safe_files(root: Path, suffixes: set[str]):
     for directory, folders, files in os.walk(root):
         folders[:] = sorted(name for name in folders if name not in PRUNED and not name.startswith(("bin-", "obj-", "packaging-work-")))
         for name in sorted(files):
+            if name == "polish_iteration2.py":
+                continue  # One-off source transform, not a needed validation fixture.
             path = Path(directory) / name
             if path.is_symlink():
                 raise ValueError(f"A source symlink requires explicit review: {path.relative_to(root)}")
@@ -64,9 +66,9 @@ def main() -> int:
         data = path.read_bytes()
         if len(data) > 5 * 1024 * 1024:
             raise ValueError(f"Oversized source resource requires review: {relative}")
-        if path.suffix.lower() not in {".dll", ".png", ".jpg", ".jpeg", ".webp", ".ico", ".icns"}:
+        if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".ico", ".icns"}:
             for rule, pattern in SECRET_PATTERNS.items():
-                if pattern.search(data):
+                if pattern.search(data) or (path.suffix.lower() == ".dll" and pattern.search(data.decode("utf-16-le", errors="ignore").encode("utf-8"))):
                     raise ValueError(f"Secret-safety review rejected {relative}: {rule}. Matched content is omitted.")
             if path.suffix.lower() == ".sh" and b"\r" in data:
                 raise ValueError(f"Native shell script must have LF line endings in the owner source: {relative}")
@@ -97,7 +99,7 @@ def main() -> int:
             raise ValueError("The exact preserved converter Core DLL was changed.")
     if "ios" in selected:
         root = roots["ios"]
-        for name in ["project.yml", "README.md", "VALIDATION.md"]:
+        for name in ["project.yml", "README.md", "VALIDATION.md", ".gitignore"]:
             include(root / name, f"ios/{name}", "ios", f"DustoreIOS/{name}")
         for folder in ["App", "Tests", "UITests", "Scripts"]:
             for path in safe_files(root / folder, {".swift", ".plist", ".png", ".json", ".xctestplan", ".sh", ".py", ".md"}):

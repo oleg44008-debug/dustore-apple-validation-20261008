@@ -20,6 +20,7 @@ enum Edition {
 
 /// Server time, never the phone clock: the Date header of dustore.ru (or google.com), carried
 /// forward by the system uptime. Without the internet time stands still on the last trusted moment.
+@MainActor
 enum TrustedClock {
     private static var server: Date?
     private static var uptimeAtSync: TimeInterval = 0
@@ -63,6 +64,7 @@ enum TrustedClock {
 
 /// Free: three eX transfers per Moscow day by server time. The counter is signed and kept in the
 /// Keychain as well — it survives deleting and reinstalling the app; editing it reads as «used up».
+@MainActor
 enum ExQuota {
     private struct Record: Codable { var day: String; var used: Int; var trusted: Double }
     private static let key = SymmetricKey(data: Data("dustore-ex-quota/ios/v1".utf8))

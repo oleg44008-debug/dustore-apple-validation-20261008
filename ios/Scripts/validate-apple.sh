@@ -33,7 +33,12 @@ PY
 simulator=$(cat Validation/simulator-udid.txt)
 
 # Both editions and both optimization levels are compiled against a real Apple SDK.
-for edition in Free Prime; do
+editions=(Free Prime)
+if [[ -n "${DUSTORE_CI_EDITION:-}" ]]; then
+  [[ "$DUSTORE_CI_EDITION" == Free || "$DUSTORE_CI_EDITION" == Prime ]]
+  editions=("$DUSTORE_CI_EDITION")
+fi
+for edition in "${editions[@]}"; do
   for mode in Debug Release; do
     config="${edition}${mode}"
     xcodebuild -project DustoreX.xcodeproj -scheme "DustoreX-${edition}" -configuration "$config" \
