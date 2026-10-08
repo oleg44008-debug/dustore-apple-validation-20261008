@@ -162,6 +162,7 @@ struct StoreWebView: UIViewRepresentable {
             }
         }
         private final class PendingResume { var cancelled = false; var download: WKDownload? }
+        @MainActor
         private final class DownloadRecord {
             let download: WKDownload, file: URL, title: String?, id: UUID
             var observation: NSKeyValueObservation?

@@ -96,7 +96,7 @@ struct Chip: View {
 
 struct Card<Content: View>: View {
     let content: Content
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.colorSchemeContrast) private var contrast
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) { content }

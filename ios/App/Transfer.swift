@@ -81,6 +81,14 @@ enum ImportFiles {
     static func stage(_ source: URL, cancellation: ImportCancellation,
                       progress: @escaping (ImportProgress) -> Void) async throws -> StagedImport {
         try await Task.detached(priority: .userInitiated) {
+            try stageSynchronously(source, cancellation: cancellation, progress: progress)
+        }.value
+    }
+
+    // DirectoryEnumerator's NSFastEnumeration iterator is synchronous by contract.
+    // Keeping the loop in this helper also makes its worker-thread ownership explicit.
+    private static func stageSynchronously(_ source: URL, cancellation: ImportCancellation,
+                                           progress: @escaping (ImportProgress) -> Void) throws -> StagedImport {
             let fm = FileManager.default
             let workspace = fm.temporaryDirectory.appendingPathComponent("dustore-import-" + UUID().uuidString, isDirectory: true)
             let target = workspace.appendingPathComponent(source.lastPathComponent)
@@ -123,7 +131,6 @@ enum ImportFiles {
                 try? fm.removeItem(at: workspace)
                 throw error
             }
-        }.value
     }
 
     static func copy(_ source: URL, to target: URL, cancellation: ImportCancellation,

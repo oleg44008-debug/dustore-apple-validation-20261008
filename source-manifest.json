@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "foundation-final-candidate-1.2.0-build3-2026-10-08",
-      "snapshottedAtUtc": "2026-10-08T10:48:58.916358+00:00"
+      "milestone": "foundation: native colorSchemeContrast fix AF06DFEA plus Transfer C04E9F81 and WebViews AD877F22; 15 Swift grammar/config pass; owner freeze 2026-10-08",
+      "snapshottedAtUtc": "2026-10-08T11:06:21.810276+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -65,8 +65,8 @@
       "path": "ios/App/Design.swift",
       "source": "DustoreIOS/App/Design.swift",
       "platform": "ios",
-      "bytes": 10105,
-      "sha256": "0765b1bf1bb4c20e13c1148494d7418461783df99b6084922cc90938fe332000"
+      "bytes": 10103,
+      "sha256": "af06dfea68272ccd16dcc4c608c8d181702988bcf9a7dd857b662adb45e1d706"
     },
     {
       "path": "ios/App/DustoreApp.swift",
@@ -128,8 +128,8 @@
       "path": "ios/App/Transfer.swift",
       "source": "DustoreIOS/App/Transfer.swift",
       "platform": "ios",
-      "bytes": 7327,
-      "sha256": "da5caba9610b24af86f4f793693bf04253852893c0b0f30e9ea3a07653b76b4c"
+      "bytes": 7803,
+      "sha256": "c04e9f81a6d2dd8c8a87c20bf299c4f43ffb8178ce126a76082641c355b1946b"
     },
     {
       "path": "ios/App/UITestFixture.swift",
@@ -149,8 +149,8 @@
       "path": "ios/App/WebViews.swift",
       "source": "DustoreIOS/App/WebViews.swift",
       "platform": "ios",
-      "bytes": 12970,
-      "sha256": "54bf176dd25c67ff47e281a2e192989341f4dda3f1fce2f67594a8d23e779a57"
+      "bytes": 12989,
+      "sha256": "ad877f22f554251ad6bf04de77c02cb675a63461ce8421fbbad73ed6d3594341"
     },
     {
       "path": "ios/App/Zip.swift",

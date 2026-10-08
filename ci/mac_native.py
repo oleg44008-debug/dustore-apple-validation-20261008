@@ -18,6 +18,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--edition", choices=["Free", "Prime"], required=True)
     parser.add_argument("--rid", choices=["osx-arm64", "osx-x64"], required=True)
+    parser.add_argument("--wine-diagnostic", action="store_true")
     args = parser.parse_args()
     run = NativeRun(f"mac-{args.edition}-{args.rid}")
     source = ROOT / "launcher-mac"
@@ -72,6 +73,13 @@ def main() -> int:
         if probe_project.is_file():
             run.run("2000-entry-viewmodel-overhead", ["dotnet", "run", "--project", str(probe_project), "-c", "Release", "--",
                     str(bundle / "Contents/MacOS/DustoreLauncherV.Mac.dll"), str(run.out / "catalog-overhead.json")], 180)
+        if args.wine_diagnostic:
+            wine_report = run.out / "wine-diagnostic.json"
+            passed = run.run("optional-owned-wine-command-fixture", [str(executable), "--wine-smoke", "--smoke-report", str(wine_report)],
+                             1500, source, env, required=False)
+            report = json.loads(wine_report.read_text(encoding="utf-8")) if wine_report.is_file() else None
+            run.details["wineDiagnostic"] = {"required": False, "passed": passed and bool(report and report.get("status") == "Pass"),
+                "report": report, "scope": "Generated PE/cmd token fixture only. No original game, graphics-device creation or FPS measurement."}
         for path in staging.iterdir():
             if path.is_file() and path.suffix in {".zip", ".dmg", ".sha256", ".json"}:
                 shutil.copyfile(path, packages / path.name)

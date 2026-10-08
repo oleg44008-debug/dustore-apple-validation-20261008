@@ -28,7 +28,7 @@ class NativeRun:
         self.checks.append({"name": name, "passed": bool(passed), "detail": detail})
         return passed
 
-    def run(self, name: str, command: list[str], timeout=300, cwd=None, env=None):
+    def run(self, name: str, command: list[str], timeout=300, cwd=None, env=None, required=True):
         log = self.out / (name + ".log")
         started = time.monotonic()
         exit_code = -1
@@ -53,9 +53,10 @@ class NativeRun:
             except OSError as error:
                 output.write(f"{type(error).__name__}: {error}\n")
         record = {"name": name, "exitCode": exit_code, "timedOut": timed_out,
-                  "seconds": round(time.monotonic() - started, 3), "log": log.name}
+                  "seconds": round(time.monotonic() - started, 3), "log": log.name, "required": required}
         self.commands.append(record)
-        self.check(name, exit_code == 0 and not timed_out, record)
+        if required:
+            self.check(name, exit_code == 0 and not timed_out, record)
         print(json.dumps(record), flush=True)
         return exit_code == 0 and not timed_out
 
@@ -74,7 +75,7 @@ class NativeRun:
         # Copy only diagnostic formats, excluding fixture/user profiles, apps,
         # tool binaries, generated build trees and CoreSimulator data.
         for directory, folders, files in os.walk(self.out):
-            folders[:] = [folder for folder in folders if not folder.startswith(("profile", "Derived", "Device", "extracted-", "installed-", "installer-mount-", "packaging-work-"))
+            folders[:] = [folder for folder in folders if not folder.startswith(("profile", "catalog-", "Derived", "Device", "extracted-", "installed-", "installer-mount-", "packaging-work-"))
                           and not folder.endswith((".app", ".xcresult"))
                           and folder not in {"foreign-working-directory", "Payload", "data", "managed", "cache"}]
             for name in files:
