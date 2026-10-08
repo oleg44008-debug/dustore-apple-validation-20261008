@@ -108,12 +108,14 @@ internal static class GameWindowChecks
             check(panel.NativeAllSpacesApplied && VisibleButton(panel, panel.ExitButton), "native auxiliary/all-Spaces policy reads back and the game Exit has hittable bounds");
             launcher.WindowState = WindowState.Minimized; await Task.Delay(250);
             check(panel.IsVisible && VisibleButton(panel, panel.ExitButton), "minimizing the launcher leaves the unowned Exit panel visible and hittable");
+            await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-compact.png"));
             panel.ReturnButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(150);
             check(launcher.WindowState != WindowState.Minimized && NativeAppSessions.Find(game.Id) is not null,
                 "actual Return restores the launcher while the exact native game continues running");
             Capture(panel, Path.Combine(reportDirectory, "game-controls-native.png"));
-            await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-compact.png"));
+            await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-return.png"));
             observations.Add(new { mode = "windowed", fixture = values, panel = PanelMetrics(panel) });
+            await File.WriteAllTextAsync(Path.Combine(reportDirectory, "game-window-native-snapshots.json"), JsonSerializer.Serialize(new { observations }, new JsonSerializerOptions { WriteIndented = true }));
             panel.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.W, KeyModifiers = KeyModifiers.Meta });
             await UntilAsync(() => NativeAppSessions.Find(game.Id) is null && !panel.IsVisible, "native game Command-W exit");
             check(!ProcessStillExists(pid), "panel Command-W confirms actual owned native PID exit, not just a quit request");
@@ -127,12 +129,13 @@ internal static class GameWindowChecks
             panel = launcher.GameControls.Find(game.Id)!; panel.UpdateLayout();
             using var fullscreen = JsonDocument.Parse(await File.ReadAllTextAsync(fixtureReport));
             var fullValues = fullscreen.RootElement.Clone();
+            observations.Add(new { mode = "fullscreen", fixture = fullValues, panel = PanelMetrics(panel) });
+            await File.WriteAllTextAsync(Path.Combine(reportDirectory, "game-window-native-snapshots.json"), JsonSerializer.Serialize(new { observations }, new JsonSerializerOptions { WriteIndented = true }));
+            await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-fullscreen.png"));
             check(fullValues.GetProperty("fullscreenRequested").GetBoolean(), "an explicit fullscreen choice remains a real native fullscreen request on reopen");
             check(fullValues.GetProperty("fullscreenActual").GetBoolean() && panel.NativeVisibility.OnActiveSpace
                 && panel.NativeVisibility.OcclusionVisible && panel.NativeAllSpacesApplied && VisibleButton(panel, panel.ExitButton),
                 "actual native fullscreen Space retains an onscreen auxiliary Exit panel with usable control bounds");
-            await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-fullscreen.png"));
-            observations.Add(new { mode = "fullscreen", fixture = fullValues, panel = PanelMetrics(panel) });
             await panel.RequestStopAsync();
             await UntilAsync(() => NativeAppSessions.Find(game.Id) is null, "native fullscreen game exit");
             check(!ProcessStillExists(fullValues.GetProperty("processId").GetInt32()), "explicit fullscreen own game can actually exit through the persistent game controller");
@@ -152,6 +155,7 @@ internal static class GameWindowChecks
     {
         var screen = panel.Screens.ScreenFromWindow(panel);
         return new { panel.Position, panel.ClientSize, panel.RenderScaling, nativeAllSpacesApplied = panel.NativeAllSpacesApplied,
+            nativePolicy = panel.NativePolicy,
             nativeOnActiveSpace = panel.NativeVisibility.OnActiveSpace, nativeOcclusionVisible = panel.NativeVisibility.OcclusionVisible,
             screenWorkingArea = screen?.WorkingArea, screenScaling = screen?.Scaling,
             exitBounds = panel.ExitButton.Bounds, returnBounds = panel.ReturnButton.Bounds };
@@ -231,7 +235,7 @@ final class GameDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowDidEnterFullScreen(_ note: Notification) { writeReport() }
     func writeReport() {
         guard window != nil, !report.isEmpty, let view = window.contentView, let screen = window.screen ?? NSScreen.main else { return }
-        let values: [String: Any] = ["processId": ProcessInfo.processInfo.processIdentifier,
+        var values: [String: Any] = ["processId": ProcessInfo.processInfo.processIdentifier,
             "logicalFramebufferWidth": 5000, "logicalFramebufferHeight": 3000,
             "requestedWindowWidth": launchWidth, "requestedWindowHeight": launchHeight,
             "clientWidth": view.bounds.width, "clientHeight": view.bounds.height,
@@ -239,6 +243,7 @@ final class GameDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "screenWorkingWidth": screen.visibleFrame.width, "screenWorkingHeight": screen.visibleFrame.height,
             "backingScaleFactor": screen.backingScaleFactor, "fullscreenRequested": full,
             "fullscreenActual": window.styleMask.contains(.fullScreen), "cornersVisible": (view as? GameSurface)?.cornersVisible ?? false]
+        if #available(macOS 13.0, *) { values["nativeSDKCanJoinAllApplicationsMask"] = NSWindow.CollectionBehavior.canJoinAllApplications.rawValue }
         if let data = try? JSONSerialization.data(withJSONObject: values, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: URL(fileURLWithPath: report), options: .atomic)
         }

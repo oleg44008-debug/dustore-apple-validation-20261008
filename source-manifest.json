@@ -9,8 +9,8 @@
     },
     "mac": {
       "owner": "mac_design",
-      "milestone": "mac_design explicit gamefix/import/Menu freeze816f7d591af65ad65decaf489799166e43d786eea0da4a9cdc2db4db3e806e55: native own gameframe5000x3000 fit and fullscreen Exit/PID stop, finished-file import retry, actual NativeMenu; root GameLaunchOptions + SmokeChecks retained",
-      "snapshottedAtUtc": "2026-10-08T13:18:29.198699+00:00"
+      "milestone": "mac_design explicit native fullscreen cross-app policy fix: GameControlWindow700D55F6 and GameWindowChecks4CBB03CB; OS13+SDK canJoinAllApplications bit262144; hardvisibilitygate unchanged, preassert flags/screens, compactcapturewhileminimized",
+      "snapshottedAtUtc": "2026-10-08T13:35:25.008590+00:00"
     }
   },
   "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
@@ -282,8 +282,8 @@
       "path": "launcher-mac/Controls/GameControlWindow.cs",
       "source": "DustoreLauncherV-Mac/Controls/GameControlWindow.cs",
       "platform": "mac",
-      "bytes": 7322,
-      "sha256": "b6d0df992fd39a4967aee358afc72dabd268dad7e17b8c3513ec15cd3f33c2c0"
+      "bytes": 8633,
+      "sha256": "700d55f6a8885b1be2e3dba6dfced1f32872215f34db8f765a2dc7b1749074c5"
     },
     {
       "path": "launcher-mac/Controls/IntroMotion.cs",
@@ -387,8 +387,8 @@
       "path": "launcher-mac/Services/GameWindowChecks.cs",
       "source": "DustoreLauncherV-Mac/Services/GameWindowChecks.cs",
       "platform": "mac",
-      "bytes": 18275,
-      "sha256": "10a778f60378448c421e618a0328d7e1b23f60f7ec7dcd959c2113584f4b0396"
+      "bytes": 18994,
+      "sha256": "4cbb03cbea3ca8b3f23a48ca02935952f0155256b825fe6ea111669e309364c9"
     },
     {
       "path": "launcher-mac/Services/LauncherServices.cs",

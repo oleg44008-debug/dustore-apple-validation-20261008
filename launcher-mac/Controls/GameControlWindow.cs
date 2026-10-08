@@ -10,6 +10,8 @@ using DustoreLauncherV.Mac.Services;
 
 namespace DustoreLauncherV.Mac.Controls;
 
+internal sealed record GameWindowNativePolicy(ulong PreviousCollectionBehavior, ulong CollectionBehavior, long Level, ulong StyleMask, string NativeClass, bool CanJoinOtherApplications);
+
 /// <summary>A small unowned game controller: launcher minimization never hides its Exit button.</summary>
 internal sealed class GameControlWindow : Window
 {
@@ -20,6 +22,7 @@ internal sealed class GameControlWindow : Window
     internal Button ExitButton { get; }
     internal Button ReturnButton { get; }
     internal bool NativeAllSpacesApplied { get; private set; }
+    internal GameWindowNativePolicy? NativePolicy { get; private set; }
     internal (bool OnActiveSpace, bool OcclusionVisible) NativeVisibility => NativeGameWindow.Visibility(this);
     internal GameEntry Entry { get; }
 
@@ -53,7 +56,11 @@ internal sealed class GameControlWindow : Window
             if (e.Key == Key.Escape || e.Key == Key.W && e.KeyModifiers.HasFlag(KeyModifiers.Meta))
             { e.Handled = true; await RequestStopAsync(); }
         };
-        Opened += (_, _) => { PlaceInsideWorkingArea(); NativeAllSpacesApplied = NativeGameWindow.MakeAuxiliary(this); };
+        Opened += (_, _) =>
+        {
+            PlaceInsideWorkingArea(); NativePolicy = NativeGameWindow.MakeAuxiliary(this);
+            NativeAllSpacesApplied = NativePolicy is { } policy && (policy.CollectionBehavior & 257) == 257;
+        };
     }
 
     internal void PlaceInsideWorkingArea()
@@ -99,6 +106,8 @@ internal sealed class GameControlWindow : Window
     {
         private const string ObjC = "/usr/lib/libobjc.A.dylib";
         [DllImport(ObjC)] private static extern IntPtr sel_registerName([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+        [DllImport(ObjC)] private static extern IntPtr object_getClass(IntPtr instance);
+        [DllImport(ObjC)] private static extern IntPtr class_getName(IntPtr type);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern nuint Get(IntPtr instance, IntPtr selector);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern void Set(IntPtr instance, IntPtr selector, nuint value);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")][return: MarshalAs(UnmanagedType.I1)]
@@ -109,17 +118,24 @@ internal sealed class GameControlWindow : Window
                 return (false, false);
             return (Boolean(handle.Handle, sel_registerName("isOnActiveSpace")), (Get(handle.Handle, sel_registerName("occlusionState")) & 2) != 0);
         }
-        internal static bool MakeAuxiliary(Window window)
+        internal static GameWindowNativePolicy? MakeAuxiliary(Window window)
         {
-            if (!OperatingSystem.IsMacOS()) return false;
+            if (!OperatingSystem.IsMacOS()) return null;
             Dispatcher.UIThread.VerifyAccess();
             // Avalonia 11.3.21 explicitly exposes its native NSWindow through this public handle.
-            if (window.TryGetPlatformHandle() is not { HandleDescriptor: "NSWindow" } handle || handle.Handle == IntPtr.Zero) return false;
+            if (window.TryGetPlatformHandle() is not { HandleDescriptor: "NSWindow" } handle || handle.Handle == IntPtr.Zero) return null;
             nuint old = Get(handle.Handle, sel_registerName("collectionBehavior"));
-            const nuint allSpaces = 1, fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8;
-            nuint next = (old | allSpaces | fullScreenAuxiliary) & ~fullScreenPrimary;
+            const nuint allSpaces = 1, fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
+            nuint next = (old | allSpaces | fullScreenAuxiliary) & ~(fullScreenPrimary | fullScreenNone);
+            // macOS 13 introduced an explicit policy for floating windows joining OTHER apps'
+            // fullscreen spaces. Stage Manager primary/auxiliary/all-applications are exclusive.
+            const nuint stagePrimary = 1 << 16, stageAuxiliary = 1 << 17, canJoinAllApplications = 1 << 18;
+            if (OperatingSystem.IsMacOSVersionAtLeast(13)) next = (next & ~(stagePrimary | stageAuxiliary)) | canJoinAllApplications;
             Set(handle.Handle, sel_registerName("setCollectionBehavior:"), next);
-            return (Get(handle.Handle, sel_registerName("collectionBehavior")) & (allSpaces | fullScreenAuxiliary)) == (allSpaces | fullScreenAuxiliary);
+            nuint actual = Get(handle.Handle, sel_registerName("collectionBehavior"));
+            return new((ulong)old, (ulong)actual, unchecked((long)Get(handle.Handle, sel_registerName("level"))),
+                (ulong)Get(handle.Handle, sel_registerName("styleMask")), Marshal.PtrToStringUTF8(class_getName(object_getClass(handle.Handle))) ?? "",
+                (actual & canJoinAllApplications) != 0);
         }
     }
 }
