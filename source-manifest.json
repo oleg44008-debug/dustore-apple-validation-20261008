@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "Foundation explicit freeze: iPad native sidebar navigation, strict destination roundtrips, authentic native AppIcon 5d68611d, player3cycles and unit10 retained; 2026-10-08",
-      "snapshottedAtUtc": "2026-10-08T13:16:13.854763+00:00"
+      "milestone": "foundation explicit accessibility-size iPad native TabView + all-four-route hittability freeze 2026-10-08 C4796DD3 / 15AAA89B",
+      "snapshottedAtUtc": "2026-10-08T13:58:37.118195+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -156,8 +156,8 @@
       "path": "ios/App/Views.swift",
       "source": "DustoreIOS/App/Views.swift",
       "platform": "ios",
-      "bytes": 34235,
-      "sha256": "7a594111a968a28010aad071a642ad3c0cc596c0efcc78ffc4fe1419cf203eb3"
+      "bytes": 34411,
+      "sha256": "c4796dd30ec06a17c460214b10bd420033b6de5f9ec383a31bb2495fb82eea75"
     },
     {
       "path": "ios/App/WebViews.swift",
@@ -177,8 +177,8 @@
       "path": "ios/README.md",
       "source": "DustoreIOS/README.md",
       "platform": "ios",
-      "bytes": 8489,
-      "sha256": "7bbabb658a63bd2f88d7640fc88ce14f685d5d23bbf0fcd80bf6e503ef6ae8e4"
+      "bytes": 8750,
+      "sha256": "af96d6e7fe81612eb5bd94c3c37578bb1d50f42b0fd01388eed21475c67280c1"
     },
     {
       "path": "ios/Scripts/generate-app-icon.swift",
@@ -219,15 +219,15 @@
       "path": "ios/UITests/DustoreUITests.swift",
       "source": "DustoreIOS/UITests/DustoreUITests.swift",
       "platform": "ios",
-      "bytes": 5757,
-      "sha256": "7c2f3f4a298416d7024606b2c91bc55fb230a0ff106cce76ff844c9dcca7566b"
+      "bytes": 6991,
+      "sha256": "15aaa89b4768ce093bc83e314d969df03015c52bbd0c7a5638b518dbd6f28a3c"
     },
     {
       "path": "ios/VALIDATION.md",
       "source": "DustoreIOS/VALIDATION.md",
       "platform": "ios",
-      "bytes": 4723,
-      "sha256": "75c91406dc4a970da0d5d13a61e333811b808681876f15fa43c89ebe801fbc1a"
+      "bytes": 4923,
+      "sha256": "b865705f731741934d8561a1821f1d76e01a9108e2ffed301ad08a540a20109f"
     },
     {
       "path": "ios/project.yml",

@@ -17,7 +17,10 @@ final class DustoreUITests: XCTestCase {
     }
     private func destination(_ title: String, in app: XCUIApplication) {
         let item = app.tabBars.buttons[title]
-        if item.exists { item.tap(); return }
+        if item.exists {
+            XCTAssertTrue(item.isHittable, "The native tab destination must be reachable through visible navigation.")
+            item.tap(); return
+        }
         let identifier = ["Магазин": "tab.0", "Библиотека": "tab.1", "eX": "tab.2", "Настройки": "tab.3"][title]!
         let sidebarItem = app.buttons[identifier]
         XCTAssertTrue(sidebarItem.waitForExistence(timeout: 5), "The adaptive iPad sidebar must expose every destination.")
@@ -84,6 +87,11 @@ final class DustoreUITests: XCTestCase {
     }
     func testAccessibilityTextStillHasImportAndSettingsActions() {
         let app = launch("empty", largeText: true)
+        for title in ["Библиотека", "Магазин", "eX", "Настройки"] {
+            let item = app.tabBars.buttons[title]
+            XCTAssertTrue(item.waitForExistence(timeout: 10), "Accessibility text must retain all four native navigation destinations.")
+            XCTAssertTrue(item.isHittable, "Every destination must remain immediately reachable at accessibility XXXL size.")
+        }
         XCTAssertTrue(app.buttons["library.import"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["library.import"].isHittable, "Large text must keep the primary import action immediately reachable.")
         app.scrollViews.firstMatch.swipeUp()
@@ -91,5 +99,14 @@ final class DustoreUITests: XCTestCase {
         capture("10-library-accessibility-text")
         destination("Настройки", in: app)
         XCTAssertTrue(app.staticTexts["Анимации интерфейса"].waitForExistence(timeout: 5)); capture("11-settings-accessibility-text")
+        destination("Магазин", in: app)
+        XCTAssertTrue(app.buttons["store.retry"].waitForExistence(timeout: 10))
+        destination("eX", in: app)
+        XCTAssertTrue(app.buttons["ex.import"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["ex.store"].exists)
+        capture("13-ex-accessibility-navigation")
+        destination("Библиотека", in: app)
+        XCTAssertTrue(app.buttons["library.import"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["library.import"].isHittable, "The full-size import action must remain reachable after the four-destination round trip.")
+        capture("14-library-accessibility-return")
     }
 }

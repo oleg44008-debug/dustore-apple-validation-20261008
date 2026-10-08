@@ -12,8 +12,10 @@ struct RootView: View {
     @State private var importing = false
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var textSize
     @AppStorage(Preferences.motion) private var motion = MotionPreference.full.rawValue
-    private var sidebar: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular }
+    // Large accessibility text needs the full content width and system-managed tabs.
+    private var sidebar: Bool { UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular && !textSize.isAccessibilitySize }
     var body: some View {
         ZStack {
             Group {
