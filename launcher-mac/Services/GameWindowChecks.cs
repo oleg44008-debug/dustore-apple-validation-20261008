@@ -105,18 +105,25 @@ internal static class GameWindowChecks
             check(frameW <= 780 && frameH <= 560 && values.GetProperty("cornersVisible").GetBoolean(),
                 "actual native high-resolution fixture fits the compact working-area contract and all four game corners remain visible");
             panel.UpdateLayout();
-            check(panel.NativeAllSpacesApplied && VisibleButton(panel, panel.ExitButton), "native auxiliary/all-Spaces policy reads back and the game Exit has hittable bounds");
+            check(panel.IsNativePanel && panel.NativeAllSpacesApplied && panel.ExitHittable && panel.ReturnHittable,
+                "actual NSPanel auxiliary/all-Spaces policy reads back and native Exit/Return hit testing succeeds");
+            check(panel.ExitName.Contains(game.Name, StringComparison.Ordinal) && panel.ReturnName.Contains("лаунчер", StringComparison.Ordinal),
+                "actual native game buttons expose localized accessibility labels and identify the exact game");
+            check(panel.NativeMovable && CornersUncovered(values, panel.NativeScreenFrame),
+                "native title bar is movable and initial placement leaves all four game corner texts uncovered");
             launcher.WindowState = WindowState.Minimized; await Task.Delay(250);
-            check(panel.IsVisible && VisibleButton(panel, panel.ExitButton), "minimizing the launcher leaves the unowned Exit panel visible and hittable");
+            check(NativeGameControlPanel.IsMiniaturized(launcher) && panel.IsVisible && panel.ExitHittable,
+                "actual AppKit launcher miniaturization leaves the unowned NSPanel visible and hittable");
+            bool launcherActuallyMiniaturized = NativeGameControlPanel.IsMiniaturized(launcher);
             await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-compact.png"));
-            panel.ReturnButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(150);
+            panel.PerformReturn(); await Task.Delay(150);
             check(launcher.WindowState != WindowState.Minimized && NativeAppSessions.Find(game.Id) is not null,
                 "actual Return restores the launcher while the exact native game continues running");
-            Capture(panel, Path.Combine(reportDirectory, "game-controls-native.png"));
+            await CapturePanelAsync(panel, Path.Combine(reportDirectory, "game-controls-native.png"));
             await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-return.png"));
-            observations.Add(new { mode = "windowed", fixture = values, panel = PanelMetrics(panel) });
+            observations.Add(new { mode = "windowed", fixture = values, panel = PanelMetrics(panel), launcherActuallyMiniaturized });
             await File.WriteAllTextAsync(Path.Combine(reportDirectory, "game-window-native-snapshots.json"), JsonSerializer.Serialize(new { observations }, new JsonSerializerOptions { WriteIndented = true }));
-            panel.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.W, KeyModifiers = KeyModifiers.Meta });
+            panel.SendExitKey(commandW: true);
             await UntilAsync(() => NativeAppSessions.Find(game.Id) is null && !panel.IsVisible, "native game Command-W exit");
             check(!ProcessStillExists(pid), "panel Command-W confirms actual owned native PID exit, not just a quit request");
 
@@ -134,9 +141,10 @@ internal static class GameWindowChecks
             await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-fullscreen.png"));
             check(fullValues.GetProperty("fullscreenRequested").GetBoolean(), "an explicit fullscreen choice remains a real native fullscreen request on reopen");
             check(fullValues.GetProperty("fullscreenActual").GetBoolean() && panel.NativeVisibility.OnActiveSpace
-                && panel.NativeVisibility.OcclusionVisible && panel.NativeAllSpacesApplied && VisibleButton(panel, panel.ExitButton),
+                && panel.NativeVisibility.OcclusionVisible && panel.IsNativePanel && panel.NativeAllSpacesApplied && panel.ExitHittable,
                 "actual native fullscreen Space retains an onscreen auxiliary Exit panel with usable control bounds");
-            await panel.RequestStopAsync();
+            check(CornersUncovered(fullValues, panel.NativeScreenFrame), "fullscreen game corner texts remain uncovered by initial native controller placement");
+            panel.PerformExit();
             await UntilAsync(() => NativeAppSessions.Find(game.Id) is null, "native fullscreen game exit");
             check(!ProcessStillExists(fullValues.GetProperty("processId").GetInt32()), "explicit fullscreen own game can actually exit through the persistent game controller");
         }
@@ -151,21 +159,38 @@ internal static class GameWindowChecks
             scope = "AppKit native fixture accepting Godot's documented window arguments; actual LaunchServices/PID stop and separate launcher controller." };
     }
 
-    private static object PanelMetrics(GameControlWindow panel)
+    private static object PanelMetrics(GameControlSurface panel)
     {
-        var screen = panel.Screens.ScreenFromWindow(panel);
         return new { panel.Position, panel.ClientSize, panel.RenderScaling, nativeAllSpacesApplied = panel.NativeAllSpacesApplied,
             nativePolicy = panel.NativePolicy,
             nativeOnActiveSpace = panel.NativeVisibility.OnActiveSpace, nativeOcclusionVisible = panel.NativeVisibility.OcclusionVisible,
-            screenWorkingArea = screen?.WorkingArea, screenScaling = screen?.Scaling,
-            exitBounds = panel.ExitButton.Bounds, returnBounds = panel.ReturnButton.Bounds };
+            screenWorkingArea = panel.ScreenWorkingArea, screenScaling = panel.RenderScaling,
+            exitBounds = panel.ExitBounds, returnBounds = panel.ReturnBounds,
+            nativeWindowNumber = panel.NativeWindowNumber, nativeIsPanel = panel.IsNativePanel, nativeMovable = panel.NativeMovable,
+            nativeScreenFrame = panel.NativeScreenFrame, nativeExitHitTest = panel.ExitHittable, nativeReturnHitTest = panel.ReturnHittable,
+            exitAccessibilityLabel = panel.ExitName, returnAccessibilityLabel = panel.ReturnName };
+    }
+    private static bool CornersUncovered(JsonElement fixture, Rect panelFrame)
+    {
+        if (!fixture.TryGetProperty("cornerScreenRects", out var corners) || corners.GetArrayLength() != 4) return false;
+        return corners.EnumerateArray().All(corner => !panelFrame.Intersects(new Rect(corner.GetProperty("x").GetDouble(), corner.GetProperty("y").GetDouble(),
+            corner.GetProperty("width").GetDouble(), corner.GetProperty("height").GetDouble())));
     }
     private static bool ProcessStillExists(int pid)
     { try { using var process = Process.GetProcessById(pid); return !process.HasExited; } catch (ArgumentException) { return false; } }
-    private static void Capture(Window window, string path)
+    private static async Task CapturePanelAsync(GameControlSurface panel, string path)
     {
-        using var image = new RenderTargetBitmap(new PixelSize((int)window.ClientSize.Width, (int)window.ClientSize.Height), new Vector(96, 96));
-        image.Render(window); image.Save(path);
+        if (panel.IsNativePanel)
+        {
+            var capture = await WineRuntime.RunAsync("/usr/sbin/screencapture", ["-x", "-l", panel.NativeWindowNumber.ToString(System.Globalization.CultureInfo.InvariantCulture), path],
+                null, TimeSpan.FromSeconds(15), CancellationToken.None);
+            if (capture.Code != 0 || !File.Exists(path)) throw new IOException("Native game controller screenshot failed: " + capture.Output);
+        }
+        else if (panel.FallbackWindow is { } window)
+        {
+            using var image = new RenderTargetBitmap(new PixelSize((int)window.ClientSize.Width, (int)window.ClientSize.Height), new Vector(96, 96));
+            image.Render(window); image.Save(path);
+        }
     }
     private static async Task CaptureDesktopAsync(string path)
     {
@@ -243,6 +268,12 @@ final class GameDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "screenWorkingWidth": screen.visibleFrame.width, "screenWorkingHeight": screen.visibleFrame.height,
             "backingScaleFactor": screen.backingScaleFactor, "fullscreenRequested": full,
             "fullscreenActual": window.styleMask.contains(.fullScreen), "cornersVisible": (view as? GameSurface)?.cornersVisible ?? false]
+        if let surface = view as? GameSurface {
+            values["cornerScreenRects"] = surface.cornerLabels.map { label, rect in
+                let global = window.convertToScreen(surface.convert(rect, to: nil))
+                return ["text": label, "x": global.minX, "y": global.minY, "width": global.width, "height": global.height] as [String: Any]
+            }
+        }
         if #available(macOS 13.0, *) { values["nativeSDKCanJoinAllApplicationsMask"] = NSWindow.CollectionBehavior.canJoinAllApplications.rawValue }
         if let data = try? JSONSerialization.data(withJSONObject: values, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: URL(fileURLWithPath: report), options: .atomic)

@@ -8,7 +8,7 @@ namespace DustoreLauncherV.Mac.Controls;
 internal sealed class GameControlHub : IDisposable
 {
     private readonly MainWindow _launcher;
-    private readonly Dictionary<Guid, GameControlWindow> _windows = new();
+    private readonly Dictionary<Guid, GameControlSurface> _windows = new();
     private bool _disposed;
     internal GameControlHub(MainWindow launcher)
     {
@@ -16,7 +16,7 @@ internal sealed class GameControlHub : IDisposable
         GameSessions.Changed += Changed;
         NativeAppSessions.Changed += Changed;
     }
-    internal GameControlWindow? Find(Guid id) => _windows.GetValueOrDefault(id);
+    internal GameControlSurface? Find(Guid id) => _windows.GetValueOrDefault(id);
     private void Changed(object? sender, GameSessionEventArgs args) => Dispatcher.UIThread.Post(Refresh);
     private void Refresh()
     {
@@ -38,7 +38,7 @@ internal sealed class GameControlHub : IDisposable
     private void Add(GameEntry entry, Func<bool, Task<bool>> stop)
     {
         if (_windows.ContainsKey(entry.Id)) return;
-        var panel = new GameControlWindow(entry, stop, () => ReturnToLauncher(entry.Id));
+        var panel = new GameControlSurface(entry, stop, () => ReturnToLauncher(entry.Id), _launcher);
         _windows.Add(entry.Id, panel);
         // A parented tool window is hidden when ULTRA minimizes the launcher. This is unowned.
         panel.Show();

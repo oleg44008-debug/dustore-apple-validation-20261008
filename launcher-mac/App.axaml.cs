@@ -119,6 +119,9 @@ public partial class App : Application
                         window.Width = 1240; window.Height = 820;
                         await Task.Delay(350);
                         var interaction = await Services.UiInteractionChecks.RunAsync(Path.GetDirectoryName(Program.SmokeReportPath)!);
+                        // Preserve completed UI evidence even when a later native game or WebKit check fails.
+                        await File.WriteAllTextAsync(Path.Combine(Path.GetDirectoryName(Program.SmokeReportPath)!, "interaction-report.json"),
+                            JsonSerializer.Serialize(interaction, new JsonSerializerOptions { WriteIndented = true }));
                         var gameWindows = await Services.GameWindowChecks.RunAsync(window, Path.GetDirectoryName(Program.SmokeReportPath)!);
                         var web = await VerifyEmbeddedStoreAsync(window);
                         Program.WriteReport(new
