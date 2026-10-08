@@ -134,6 +134,27 @@ internal static class UiInteractionChecks
                         Check(position is { } p && p.Y >= 0 && p.Y + title.Bounds.Height <= window.ClientSize.Height + 1,
                             "a short window shows the first game title in the initial viewport");
                     }
+                    if (section == "settings")
+                    {
+                        var card = window.FindControl<Border>("AppearanceCard")!;
+                        var options = window.FindControl<Grid>("AppearanceOptions")!;
+                        foreach (var option in options.Children.OfType<CheckBox>())
+                        {
+                            var position = option.TranslatePoint(default, card);
+                            string name = (option.Content as TextBlock)?.Text ?? option.Content?.ToString() ?? "unnamed preference";
+                            Check(ControlAutomationPeer.CreatePeerForElement(option)?.GetName() == name,
+                                $"preference {name} retains its accessible name at {width}x{height}");
+                            Check(position is { } p && p.X >= card.Padding.Left - 1
+                                && p.X + option.Bounds.Width <= card.Bounds.Width - card.Padding.Right + 1,
+                                $"preference {name} stays inside its settings card at {width}x{height}");
+                            var label = option.Content as TextBlock;
+                            var textPosition = label?.TranslatePoint(default, card);
+                            Check(textPosition is { } t && t.X >= card.Padding.Left - 1
+                                && t.X + label!.Bounds.Width <= card.Bounds.Width - card.Padding.Right + 1
+                                && label.DesiredSize.Width <= label.Bounds.Width + 1,
+                                $"preference label {name} is fully measured within its settings card at {width}x{height}");
+                        }
+                    }
                     Save(window, Path.Combine(reportDirectory, $"interaction-{Edition.Name}-{width}x{height}-{section}.png"));
                     geometry.Add(new { width = window.ClientSize.Width, height = window.ClientSize.Height, section, shelfContainers = model.ShelfItems.Count });
                 }

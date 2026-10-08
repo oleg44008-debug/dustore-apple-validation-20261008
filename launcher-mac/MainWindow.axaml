@@ -526,9 +526,9 @@
 
       <!-- ===== Settings ===== -->
       <ScrollViewer Name="SettingsPage" Grid.Row="1" IsVisible="{Binding IsSettings}" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="16" Margin="{Binding PageMargin}" MaxWidth="820" HorizontalAlignment="Left">
+        <StackPanel Spacing="16" Margin="{Binding PageMargin}" MaxWidth="820" HorizontalAlignment="Stretch">
           <!-- Appearance: Prime customises; Free sees what it unlocks. -->
-          <Border Classes="card">
+          <Border Name="AppearanceCard" Classes="card">
             <StackPanel Spacing="14">
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock FontSize="16" FontWeight="SemiBold" Text="Оформление" />
@@ -556,16 +556,16 @@
                 </ComboBox>
               </Grid>
               <TextBlock Classes="dim" FontSize="12" Text="Разделы и вид" Margin="0,4,0,0" />
-              <WrapPanel IsEnabled="{Binding IsPrime}">
-                <CheckBox Content="eX" IsChecked="{Binding ShowExSection, Mode=TwoWay}" Margin="0,0,18,6" />
-                <CheckBox Content="Магазин" IsChecked="{Binding ShowStoreSection, Mode=TwoWay}" Margin="0,0,18,6" />
-                <CheckBox Content="Главная" IsChecked="{Binding ShowHomeSection, Mode=TwoWay}" Margin="0,0,18,6" />
-                <CheckBox Content="Спринты" IsChecked="{Binding ShowJamsSection, Mode=TwoWay}" Margin="0,0,18,6" />
-                <CheckBox Content="Ассеты" IsChecked="{Binding ShowAssetsSection, Mode=TwoWay}" Margin="0,0,18,6" />
-                <CheckBox Content="Карточка игры" IsChecked="{Binding ShowHeroCard, Mode=TwoWay}" Margin="0,0,18,6" />
-                <CheckBox Content="Компактные обложки" IsChecked="{Binding CompactShelf, Mode=TwoWay}" Margin="0,0,18,6" />
-                <CheckBox Content="Анимация при запуске" IsChecked="{Binding IntroAnimation, Mode=TwoWay}" Margin="0,0,18,6" />
-              </WrapPanel>
+              <Grid Name="AppearanceOptions" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" IsEnabled="{Binding IsPrime}">
+                <CheckBox IsChecked="{Binding ShowExSection, Mode=TwoWay}" Margin="0,0,18,6" AutomationProperties.Name="eX"><TextBlock Text="eX" TextWrapping="Wrap" FontSize="13" /></CheckBox>
+                <CheckBox Grid.Column="1" IsChecked="{Binding ShowStoreSection, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="Магазин"><TextBlock Text="Магазин" TextWrapping="Wrap" FontSize="13" /></CheckBox>
+                <CheckBox Grid.Row="1" IsChecked="{Binding ShowHomeSection, Mode=TwoWay}" Margin="0,0,18,6" AutomationProperties.Name="Главная"><TextBlock Text="Главная" TextWrapping="Wrap" FontSize="13" /></CheckBox>
+                <CheckBox Grid.Row="1" Grid.Column="1" IsChecked="{Binding ShowJamsSection, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="Спринты"><TextBlock Text="Спринты" TextWrapping="Wrap" FontSize="13" /></CheckBox>
+                <CheckBox Grid.Row="2" IsChecked="{Binding ShowAssetsSection, Mode=TwoWay}" Margin="0,0,18,6" AutomationProperties.Name="Ассеты"><TextBlock Text="Ассеты" TextWrapping="Wrap" FontSize="13" /></CheckBox>
+                <CheckBox Grid.Row="2" Grid.Column="1" IsChecked="{Binding ShowHeroCard, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="Карточка игры"><TextBlock Text="Карточка игры" TextWrapping="Wrap" FontSize="13" /></CheckBox>
+                <CheckBox Grid.Row="3" IsChecked="{Binding CompactShelf, Mode=TwoWay}" Margin="0,0,18,6" AutomationProperties.Name="Компактные обложки"><TextBlock Text="Компактные обложки" TextWrapping="Wrap" FontSize="13" /></CheckBox>
+                <CheckBox Grid.Row="3" Grid.Column="1" IsChecked="{Binding IntroAnimation, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="Анимация при запуске"><TextBlock Text="Анимация при запуске" TextWrapping="Wrap" FontSize="13" /></CheckBox>
+              </Grid>
               <TextBlock Text="{Binding MotionPreferenceNote}" Classes="dim" FontSize="12" TextWrapping="Wrap" /><CheckBox Content="Уменьшить движение" IsChecked="{Binding ReduceMotion, Mode=TwoWay}" ToolTip.Tip="Отключает вступление, движение карточек и переходы разделов." />
             </StackPanel>
           </Border>

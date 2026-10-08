@@ -9,8 +9,8 @@
     },
     "mac": {
       "owner": "mac_design",
-      "milestone": "mac_design taskpolicy checkpoint: only UltraMode /usr/sbin/taskpolicy and native required SessionChecks; exact-Core Free+Prime build0warnings0errors, services local PASS; final freeze pending Intel Wine diagnosis",
-      "snapshottedAtUtc": "2026-10-08T12:00:08.184374+00:00"
+      "milestone": "mac_design settings/taskpolicy checkpoint: finite appearance2columns wrapped labels/a11y+176 meaningful interaction checks each; native taskpolicy required Prime; exact-Core Free+Prime build0warnings0errors; freeze pending Intel diagnosis",
+      "snapshottedAtUtc": "2026-10-08T12:13:52.850806+00:00"
     }
   },
   "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
@@ -282,8 +282,8 @@
       "path": "launcher-mac/MainWindow.axaml",
       "source": "DustoreLauncherV-Mac/MainWindow.axaml",
       "platform": "mac",
-      "bytes": 69133,
-      "sha256": "d5f267eb6c95abf612733bae669287f3b99075b885ffb84b8bb4cc31b9fc90b7"
+      "bytes": 70169,
+      "sha256": "9c6177b53d45a7407350432b056625b9b1303d88f4831ab60fba0698f6e7d2ee"
     },
     {
       "path": "launcher-mac/MainWindow.axaml.cs",
@@ -415,8 +415,8 @@
       "path": "launcher-mac/Services/UiInteractionChecks.cs",
       "source": "DustoreLauncherV-Mac/Services/UiInteractionChecks.cs",
       "platform": "mac",
-      "bytes": 15088,
-      "sha256": "ffae010bd96f0d8b6defcc37d973997c12269903120e0b47347a8f8aca865a37"
+      "bytes": 16762,
+      "sha256": "bc05942fe509d180af86f59a5c482bf588d11c7b93220e3cd90df98b9c3b2cc9"
     },
     {
       "path": "launcher-mac/Services/UiPreferences.cs",
