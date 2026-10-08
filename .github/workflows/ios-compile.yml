@@ -1,0 +1,57 @@
+name: iOS native compiler checkpoint
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ios/**
+      - .github/workflows/ios-compile.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-compiler-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compile:
+    name: Xcode 16.4 — ${{ matrix.edition }} compiler
+    runs-on: macos-15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [Free, Prime]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify exact committed source
+        run: python3 ci/verify_source.py --out reports/compiler
+      - name: Prepare actual Apple toolchain and generate project
+        run: |
+          xcodebuild -version | tee reports/compiler/xcode.txt
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen --version | tee reports/compiler/xcodegen.txt
+          cd ios
+          xcodegen generate
+      - name: Compile current app source against the real iOS simulator SDK
+        run: |
+          xcodebuild -project ios/DustoreX.xcodeproj -scheme 'DustoreX-${{ matrix.edition }}' \
+            -configuration '${{ matrix.edition }}Debug' -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath reports/compiler/DerivedData CODE_SIGNING_ALLOWED=NO build \
+            2>&1 | tee reports/compiler/build.log
+      - name: Upload compiler evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-compiler-${{ matrix.edition }}
+          path: |
+            reports/compiler/*.json
+            reports/compiler/*.txt
+            reports/compiler/*.log
+          if-no-files-found: error
+          retention-days: 30

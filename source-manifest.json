@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "kind": "allowlisted-owner-frozen-source",
+  "freezes": {
+    "ios": {
+      "owner": "foundation",
+      "milestone": "foundation-authorized-first-native-compiler-checkpoint-2026-10-08",
+      "snapshottedAtUtc": "2026-10-08T10:38:49.843978+00:00"
+    }
+  },
+  "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
+  "exactConverterCoreSha256": "230cee7f71f6b2858a15ef210e4d6eb0f1f1a9ab368e9ff9512a77693934dfc3",
+  "originalLogoSha256": "69cdb26a75f82302b8f476788a705bbdd6c1ed8d74934e3f05cb4df6a41468d4",
+  "excluded": [
+    "external Git history",
+    "credentials",
+    "signing keys/profiles",
+    "user profiles",
+    "original games",
+    "original IPA",
+    "build outputs"
+  ],
+  "files": [
+    {
+      "path": "ios/App/Assets.xcassets/BrandMark.imageset/Contents.json",
+      "source": "DustoreIOS/App/Assets.xcassets/BrandMark.imageset/Contents.json",
+      "platform": "ios",
+      "bytes": 139,
+      "sha256": "0a75e74e3079b6b0a2ddd851a70c805910a84217a0f80a5bb30609a992fdc0f3"
+    },
+    {
+      "path": "ios/App/Assets.xcassets/BrandMark.imageset/dustore-logo-original.png",
+      "source": "DustoreIOS/App/Assets.xcassets/BrandMark.imageset/dustore-logo-original.png",
+      "platform": "ios",
+      "bytes": 131647,
+      "sha256": "69cdb26a75f82302b8f476788a705bbdd6c1ed8d74934e3f05cb4df6a41468d4"
+    },
+    {
+      "path": "ios/App/Assets.xcassets/Contents.json",
+      "source": "DustoreIOS/App/Assets.xcassets/Contents.json",
+      "platform": "ios",
+      "bytes": 50,
+      "sha256": "2320eb3e02f9e3419d35676c6fd470ec13d5aa314c0d29700e09ec76d8e2360a"
+    },
+    {
+      "path": "ios/App/Design.swift",
+      "source": "DustoreIOS/App/Design.swift",
+      "platform": "ios",
+      "bytes": 10011,
+      "sha256": "46b6471f8273d1d56de892b5b2d4526d33fbc72c0a0d427ec7c6c550e18835c6"
+    },
+    {
+      "path": "ios/App/DustoreApp.swift",
+      "source": "DustoreIOS/App/DustoreApp.swift",
+      "platform": "ios",
+      "bytes": 4058,
+      "sha256": "e1d68e13f21cf60fb2ce16f67e98cea80f8f98a7143a7156712a1e01396d85e7"
+    },
+    {
+      "path": "ios/App/Edition.swift",
+      "source": "DustoreIOS/App/Edition.swift",
+      "platform": "ios",
+      "bytes": 8004,
+      "sha256": "68c2a750737e0fb628cdb3bfbd9f6241cb9540b6b796b1cd27dbb00aee0be62c"
+    },
+    {
+      "path": "ios/App/GameInput.swift",
+      "source": "DustoreIOS/App/GameInput.swift",
+      "platform": "ios",
+      "bytes": 9184,
+      "sha256": "e5ad90132f13d7bea540cbf90ae2e26e70d1cf2a13c439867b34c4a73ec9b6d3"
+    },
+    {
+      "path": "ios/App/GameServer.swift",
+      "source": "DustoreIOS/App/GameServer.swift",
+      "platform": "ios",
+      "bytes": 3628,
+      "sha256": "005b9e99da55efb0a02775bc05390200f46ab56d223cd25ee301937f3c719d6c"
+    },
+    {
+      "path": "ios/App/Info.plist",
+      "source": "DustoreIOS/App/Info.plist",
+      "platform": "ios",
+      "bytes": 1635,
+      "sha256": "597bb9f4a6ca8df4ef3713837b65ceeb7d34ee48e010477d9d2812652486272e"
+    },
+    {
+      "path": "ios/App/Library.swift",
+      "source": "DustoreIOS/App/Library.swift",
+      "platform": "ios",
+      "bytes": 13012,
+      "sha256": "ae9066468a0aa738b35f5e7b2986f7a560b680085bf4eac06aa45c71344b95ae"
+    },
+    {
+      "path": "ios/App/Player.swift",
+      "source": "DustoreIOS/App/Player.swift",
+      "platform": "ios",
+      "bytes": 10244,
+      "sha256": "7c8ebcfd553acd133b0da1e31ca9e30cb5696b7af79b622828257203d90680b9"
+    },
+    {
+      "path": "ios/App/Porter.swift",
+      "source": "DustoreIOS/App/Porter.swift",
+      "platform": "ios",
+      "bytes": 18739,
+      "sha256": "fcac07256d98460b938743a85870180f8b0ab0c8881332846c14eb837172e06c"
+    },
+    {
+      "path": "ios/App/Transfer.swift",
+      "source": "DustoreIOS/App/Transfer.swift",
+      "platform": "ios",
+      "bytes": 7327,
+      "sha256": "da5caba9610b24af86f4f793693bf04253852893c0b0f30e9ea3a07653b76b4c"
+    },
+    {
+      "path": "ios/App/UITestFixture.swift",
+      "source": "DustoreIOS/App/UITestFixture.swift",
+      "platform": "ios",
+      "bytes": 3246,
+      "sha256": "b8c9c2e45451157b3ba29b9873b2133e326ae03bf1749dac00fa7091c433e50c"
+    },
+    {
+      "path": "ios/App/Views.swift",
+      "source": "DustoreIOS/App/Views.swift",
+      "platform": "ios",
+      "bytes": 31623,
+      "sha256": "e26088111e87e8d1ecd9bf16d574ba7dd4358d4c2c22723f974c914095673b50"
+    },
+    {
+      "path": "ios/App/WebViews.swift",
+      "source": "DustoreIOS/App/WebViews.swift",
+      "platform": "ios",
+      "bytes": 12530,
+      "sha256": "0e69b768c2954a0f1fa09aa8736d8dba3d81d1ab3e11f4b22da0e8e6279ffc29"
+    },
+    {
+      "path": "ios/App/Zip.swift",
+      "source": "DustoreIOS/App/Zip.swift",
+      "platform": "ios",
+      "bytes": 15178,
+      "sha256": "b700f30cf5ac3c8d54d7b85d645891451bc06014274035c5fce21a06c0f42e39"
+    },
+    {
+      "path": "ios/README.md",
+      "source": "DustoreIOS/README.md",
+      "platform": "ios",
+      "bytes": 7141,
+      "sha256": "f4dc452e762fb897c14352c7d7224d76198c563aed6546c41b5799d68708c472"
+    },
+    {
+      "path": "ios/Scripts/package-unsigned-device.sh",
+      "source": "DustoreIOS/Scripts/package-unsigned-device.sh",
+      "platform": "ios",
+      "bytes": 804,
+      "sha256": "47d8c36c31b9fe604a9c4a2666395d5ce4a5857586b57f43976f07dffd642ffa"
+    },
+    {
+      "path": "ios/Scripts/validate-apple.sh",
+      "source": "DustoreIOS/Scripts/validate-apple.sh",
+      "platform": "ios",
+      "bytes": 3105,
+      "sha256": "e0854eca8b99b1318be183c1525ab7676f46a11cc524335d102ff14f8e7b1a9a"
+    },
+    {
+      "path": "ios/Tests/CoreTests.swift",
+      "source": "DustoreIOS/Tests/CoreTests.swift",
+      "platform": "ios",
+      "bytes": 5669,
+      "sha256": "cd78d844ae69f3fab41b6d2dbcd486bcea147c6097dcb51f7ca3dcde641467fe"
+    },
+    {
+      "path": "ios/UITests/DustoreUITests.swift",
+      "source": "DustoreIOS/UITests/DustoreUITests.swift",
+      "platform": "ios",
+      "bytes": 4264,
+      "sha256": "d94aa0561d0261e85de81bc5d6cd2eab0ce9956d5fb5097ee95adfcd8c5ab746"
+    },
+    {
+      "path": "ios/VALIDATION.md",
+      "source": "DustoreIOS/VALIDATION.md",
+      "platform": "ios",
+      "bytes": 2349,
+      "sha256": "341b354406d5cc4a919ceb4712414f4602fe67bfacf199171fb9c4e12384bfa4"
+    },
+    {
+      "path": "ios/project.yml",
+      "source": "DustoreIOS/project.yml",
+      "platform": "ios",
+      "bytes": 2219,
+      "sha256": "7d94a0893bf4625a46a4110b0c7cb5b0f46732f23573eda253ba8c38aaa862b5"
+    }
+  ]
+}

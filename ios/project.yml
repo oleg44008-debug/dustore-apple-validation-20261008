@@ -1,0 +1,91 @@
+name: DustoreX
+options:
+  bundleIdPrefix: ru.dustore
+  deploymentTarget:
+    iOS: "16.0"
+  defaultConfig: PrimeDebug
+configs:
+  FreeDebug: debug
+  FreeRelease: release
+  PrimeDebug: debug
+  PrimeRelease: release
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.2.0"
+    CURRENT_PROJECT_VERSION: "3"
+    DUSTORE_DISPLAY_NAME: DustoreX
+  configs:
+    FreeDebug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG"
+    FreeRelease:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
+    PrimeDebug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG PRIME"
+      DUSTORE_DISPLAY_NAME: DustoreX Prime
+    PrimeRelease:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) PRIME"
+      DUSTORE_DISPLAY_NAME: DustoreX Prime
+targets:
+  DustoreX:
+    type: application
+    platform: iOS
+    sources: [App]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.dustore.launcher.ios
+        INFOPLIST_FILE: App/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+  DustoreXTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: DustoreX
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.dustore.launcher.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+  DustoreXUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: DustoreX
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.dustore.launcher.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  DustoreX-Free:
+    build:
+      targets:
+        DustoreX: all
+    run:
+      config: FreeDebug
+    test:
+      config: FreeDebug
+      targets: [DustoreXTests, DustoreXUITests]
+    analyze:
+      config: FreeDebug
+    profile:
+      config: FreeRelease
+    archive:
+      config: FreeRelease
+  DustoreX-Prime:
+    build:
+      targets:
+        DustoreX: all
+    run:
+      config: PrimeDebug
+    test:
+      config: PrimeDebug
+      targets: [DustoreXTests, DustoreXUITests]
+    analyze:
+      config: PrimeDebug
+    profile:
+      config: PrimeRelease
+    archive:
+      config: PrimeRelease

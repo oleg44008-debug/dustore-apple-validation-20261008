@@ -14,6 +14,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--expected-arch", choices=["arm64", "x86_64"], required=True)
+    parser.add_argument("--skip-simulator", action="store_true", help="Mac app-only jobs do not require CoreSimulator initialization.")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     records = []
@@ -24,23 +25,30 @@ def main() -> int:
         ("sdks", ["xcodebuild", "-showsdks"]),
         ("dotnet-sdks", ["dotnet", "--list-sdks"]),
         ("dotnet-info", ["dotnet", "--info"]),
-        ("simulator-runtimes", ["xcrun", "simctl", "list", "runtimes", "-j"]),
-        ("simulator-devices", ["xcrun", "simctl", "list", "devices", "available", "-j"]),
     ]
+    if not args.skip_simulator:
+        commands += [("simulator-runtimes", ["xcrun", "simctl", "list", "runtimes", "-j"]),
+                     ("simulator-devices", ["xcrun", "simctl", "list", "devices", "available", "-j"])]
     outputs = {}
     for name, command in commands:
         started = time.monotonic()
-        try:
-            result = subprocess.run(command, text=True, capture_output=True, timeout=60, check=False)
-            output = result.stdout + result.stderr
-            exit_code = result.returncode
-        except (OSError, subprocess.TimeoutExpired) as error:
-            output = f"{type(error).__name__}: {error}\n"
-            exit_code = -1
+        attempts = []
+        for attempt in range(2 if name.startswith("simulator-") else 1):
+            try:
+                result = subprocess.run(command, text=True, capture_output=True, timeout=120 if name.startswith("simulator-") else 60, check=False)
+                output = result.stdout + result.stderr
+                exit_code = result.returncode
+            except (OSError, subprocess.TimeoutExpired) as error:
+                output = f"{type(error).__name__}: {error}\n"
+                exit_code = -1
+            attempts.append({"attempt": attempt + 1, "exitCode": exit_code})
+            (args.out / f"{name}-attempt-{attempt + 1}.txt").write_text(output, encoding="utf-8")
+            if exit_code == 0:
+                break
         (args.out / f"{name}.txt").write_text(output, encoding="utf-8")
         outputs[name] = output
         records.append({"name": name, "command": command, "exitCode": exit_code,
-                        "seconds": round(time.monotonic() - started, 3), "report": f"{name}.txt"})
+                        "seconds": round(time.monotonic() - started, 3), "report": f"{name}.txt", "attempts": attempts})
     checks = [
         {"name": "native macOS host", "passed": platform.system() == "Darwin"},
         {"name": "expected native architecture", "passed": platform.machine() == args.expected_arch},
