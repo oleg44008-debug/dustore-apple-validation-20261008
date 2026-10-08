@@ -1,0 +1,51 @@
+name: Apple native toolchain probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/toolchain-probe.yml
+      - ci/toolchain_probe.py
+      - global.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Native toolchain — ${{ matrix.arch }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.424
+      - name: Inspect actual runner and selected Xcode
+        run: python3 ci/toolchain_probe.py --out reports/toolchain --expected-arch '${{ matrix.arch }}'
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: toolchain-${{ matrix.arch }}
+          path: reports/toolchain/
+          if-no-files-found: error
+          retention-days: 30
