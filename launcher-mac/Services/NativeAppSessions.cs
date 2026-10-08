@@ -22,12 +22,12 @@ internal static class NativeAppSessions
         for (int attempt = 0; attempt < 16; attempt++)
         {
             cancellation.ThrowIfCancellationRequested();
-            int pid = await Dispatcher.UIThread.InvokeAsync(() => AppKit.FindBundle(bundle));
-            if (pid > 0)
+            var identity = await Dispatcher.UIThread.InvokeAsync(() => AppKit.FindBundle(bundle));
+            if (identity is not null)
             {
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    var session = new NativeSession(entry, bundle, pid);
+                    var session = new NativeSession(entry, bundle, identity.ProcessId, identity.LaunchStamp);
                     lock (Gate) Active[entry.Id] = session;
                     _monitor ??= new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => Poll());
                     _monitor.Start();
@@ -44,27 +44,30 @@ internal static class NativeAppSessions
     {
         foreach (var session in Snapshot())
         {
-            if (AppKit.StillRunning(session.ProcessId, session.Bundle)) continue;
+            if (AppKit.StillRunning(session.ProcessId, session.Bundle, session.LaunchStamp)) continue;
             lock (Gate) Active.Remove(session.Entry.Id);
             Changed?.Invoke(null, new(session.Entry.Id, "native app", 0));
         }
         lock (Gate) if (Active.Count == 0) _monitor?.Stop();
     }
 
-    internal sealed class NativeSession(GameEntry entry, string bundle, int processId)
+    internal sealed class NativeSession(GameEntry entry, string bundle, int processId, double launchStamp)
     {
         internal GameEntry Entry { get; } = entry;
         internal string Bundle { get; } = bundle;
         internal int ProcessId { get; } = processId;
+        // LaunchServices supplies immutable NSDate launchDate. PID+bundle alone can identify a
+        // replacement instance if the OS reuses its PID between two monitor ticks.
+        internal double LaunchStamp { get; } = launchStamp;
         internal async Task<bool> StopAsync(bool force, CancellationToken cancellation)
         {
-            bool requested = await Dispatcher.UIThread.InvokeAsync(() => AppKit.RequestQuit(ProcessId, Bundle, force));
-            if (!requested && await Dispatcher.UIThread.InvokeAsync(() => AppKit.StillRunning(ProcessId, Bundle)))
+            bool requested = await Dispatcher.UIThread.InvokeAsync(() => AppKit.RequestQuit(ProcessId, Bundle, LaunchStamp, force));
+            if (!requested && await Dispatcher.UIThread.InvokeAsync(() => AppKit.StillRunning(ProcessId, Bundle, LaunchStamp)))
                 throw new IOException("Игра не приняла запрос закрытия. Можно закрыть её принудительно.");
             for (int attempt = 0; attempt < 20; attempt++)
             {
                 cancellation.ThrowIfCancellationRequested();
-                if (!await Dispatcher.UIThread.InvokeAsync(() => AppKit.StillRunning(ProcessId, Bundle)))
+                if (!await Dispatcher.UIThread.InvokeAsync(() => AppKit.StillRunning(ProcessId, Bundle, LaunchStamp)))
                 {
                     await Dispatcher.UIThread.InvokeAsync(Poll);
                     return true;
@@ -76,6 +79,8 @@ internal static class NativeAppSessions
         }
     }
 
+    private sealed record NativeIdentity(int ProcessId, double LaunchStamp);
+
     private static class AppKit
     {
         private const string ObjC = "/usr/lib/libobjc.A.dylib";
@@ -86,6 +91,7 @@ internal static class NativeAppSessions
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern IntPtr WithPid(IntPtr instance, IntPtr selector, int pid);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern nuint Count(IntPtr instance, IntPtr selector);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern int Integer(IntPtr instance, IntPtr selector);
+        [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern double Number(IntPtr instance, IntPtr selector);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")][return: MarshalAs(UnmanagedType.I1)]
         private static extern bool Boolean(IntPtr instance, IntPtr selector);
         private static IntPtr S(string name) => sel_registerName(name);
@@ -95,13 +101,19 @@ internal static class NativeAppSessions
             IntPtr path = url == IntPtr.Zero ? IntPtr.Zero : Pointer(url, S("path"));
             return path == IntPtr.Zero ? "" : Marshal.PtrToStringUTF8(Pointer(path, S("UTF8String"))) ?? "";
         }
-        private static IntPtr ExactApplication(int pid, string bundle)
+        private static double LaunchStampOf(IntPtr app)
+        {
+            IntPtr date = Pointer(app, S("launchDate"));
+            return date == IntPtr.Zero ? double.NaN : Number(date, S("timeIntervalSince1970"));
+        }
+        private static IntPtr ExactApplication(int pid, string bundle, double launchStamp)
         {
             IntPtr app = WithPid(objc_getClass("NSRunningApplication"), S("runningApplicationWithProcessIdentifier:"), pid);
             return app != IntPtr.Zero && !Boolean(app, S("isTerminated")) && PathOf(app).Equals(bundle, StringComparison.Ordinal)
+                && double.IsFinite(launchStamp) && LaunchStampOf(app) == launchStamp
                 ? app : IntPtr.Zero;
         }
-        internal static int FindBundle(string bundle)
+        internal static NativeIdentity? FindBundle(string bundle)
         {
             Dispatcher.UIThread.VerifyAccess();
             IntPtr workspace = Pointer(objc_getClass("NSWorkspace"), S("sharedWorkspace"));
@@ -109,20 +121,21 @@ internal static class NativeAppSessions
             for (nuint index = 0, count = Count(apps, S("count")); index < count; index++)
             {
                 IntPtr app = AtIndex(apps, S("objectAtIndex:"), index);
-                if (PathOf(app).Equals(bundle, StringComparison.Ordinal) && !Boolean(app, S("isTerminated")))
-                    return Integer(app, S("processIdentifier"));
+                if (PathOf(app).Equals(bundle, StringComparison.Ordinal) && !Boolean(app, S("isTerminated"))
+                    && LaunchStampOf(app) is double stamp && double.IsFinite(stamp))
+                    return new(Integer(app, S("processIdentifier")), stamp);
             }
-            return 0;
+            return null;
         }
-        internal static bool StillRunning(int pid, string bundle)
+        internal static bool StillRunning(int pid, string bundle, double launchStamp)
         {
             Dispatcher.UIThread.VerifyAccess();
-            return ExactApplication(pid, bundle) != IntPtr.Zero;
+            return ExactApplication(pid, bundle, launchStamp) != IntPtr.Zero;
         }
-        internal static bool RequestQuit(int pid, string bundle, bool force)
+        internal static bool RequestQuit(int pid, string bundle, double launchStamp, bool force)
         {
             Dispatcher.UIThread.VerifyAccess();
-            IntPtr app = ExactApplication(pid, bundle);
+            IntPtr app = ExactApplication(pid, bundle, launchStamp);
             return app == IntPtr.Zero || Boolean(app, S(force ? "forceTerminate" : "terminate"));
         }
     }

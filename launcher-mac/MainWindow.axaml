@@ -526,10 +526,10 @@
 
       <!-- ===== Settings ===== -->
       <ScrollViewer Name="SettingsPage" Grid.Row="1" IsVisible="{Binding IsSettings}" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="16" Margin="{Binding PageMargin}" MaxWidth="820" HorizontalAlignment="Stretch">
+        <StackPanel Name="SettingsCards" Spacing="16" Margin="{Binding PageMargin}" MaxWidth="820" HorizontalAlignment="Stretch">
           <!-- Appearance: Prime customises; Free sees what it unlocks. -->
           <Border Name="AppearanceCard" Classes="card">
-            <StackPanel Spacing="14">
+            <StackPanel Name="AppearanceContents" Spacing="14">
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock FontSize="16" FontWeight="SemiBold" Text="Оформление" />
                 <Border Grid.Column="1" Classes="chip" Background="{DynamicResource AccentSubtle}" IsVisible="{Binding IsFree}">
@@ -566,16 +566,16 @@
                 <CheckBox Grid.Row="3" IsChecked="{Binding CompactShelf, Mode=TwoWay}" Margin="0,0,18,6" AutomationProperties.Name="Компактные обложки"><TextBlock Text="Компактные обложки" TextWrapping="Wrap" FontSize="13" /></CheckBox>
                 <CheckBox Grid.Row="3" Grid.Column="1" IsChecked="{Binding IntroAnimation, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="Анимация при запуске"><TextBlock Text="Анимация при запуске" TextWrapping="Wrap" FontSize="13" /></CheckBox>
               </Grid>
-              <TextBlock Text="{Binding MotionPreferenceNote}" Classes="dim" FontSize="12" TextWrapping="Wrap" /><CheckBox Content="Уменьшить движение" IsChecked="{Binding ReduceMotion, Mode=TwoWay}" ToolTip.Tip="Отключает вступление, движение карточек и переходы разделов." />
+              <TextBlock Name="MotionPreferenceHint" Text="{Binding MotionPreferenceNote}" Classes="dim" FontSize="12" TextWrapping="Wrap" /><CheckBox Name="MotionToggle" Content="Уменьшить движение" IsChecked="{Binding ReduceMotion, Mode=TwoWay}" ToolTip.Tip="Отключает вступление, движение карточек и переходы разделов." />
             </StackPanel>
           </Border>
           <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="Управление" FontSize="16" FontWeight="SemiBold" /><Button Classes="pill" Content="Полноэкранный режим" Click="Fullscreen_Click" HorizontalAlignment="Left" ToolTip.Tip="⌃⌘F / F11" AutomationProperties.Name="Полноэкранный режим" /><TextBlock Text="⌘F — поиск · ⌘O — добавить игру&#10;⌘1 / ⌘2 / ⌘3 — разделы · ⌘, — настройки&#10;Стрелки — выбрать игру · Enter — играть" Classes="dim" FontSize="12" TextWrapping="Wrap" LineHeight="21" /></StackPanel></Border>
-          <Border Classes="card">
+          <Border Name="LibrarySettingsCard" Classes="card">
             <StackPanel Spacing="10">
               <TextBlock FontSize="16" FontWeight="SemiBold" Text="Библиотека Mac" />
               <TextBlock Classes="secondary" Text="Записи, подготовленные приложения и обложки хранятся в отдельном профиле Mac." TextWrapping="Wrap" />
               <Expander Header="Расположение"><SelectableTextBlock Text="{Binding DataDirectory}" TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0" /></Expander>
-              <Button Classes="pill" Content="Открыть папку библиотеки" Command="{Binding RevealDataCommand}" HorizontalAlignment="Left" AutomationProperties.Name="Открыть папку библиотеки" />
+              <Button Name="LibraryFolderButton" Classes="pill" Content="Открыть папку библиотеки" Command="{Binding RevealDataCommand}" HorizontalAlignment="Left" AutomationProperties.Name="Открыть папку библиотеки" />
             </StackPanel>
           </Border>
           <Border Classes="card">
@@ -607,7 +607,7 @@
           <Border Classes="card">
             <StackPanel Spacing="10">
               <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding RailVersion}" />
-              <TextBlock Classes="secondary" Text="Библиотека игр Mac, магазин Dustore и перенос игр Windows ↔ macOS через eX. Запуск по умолчанию — на весь экран; режим окна и разрешение меняются у каждой игры." TextWrapping="Wrap" />
+              <TextBlock Classes="secondary" Text="Библиотека игр Mac, магазин Dustore и перенос игр Windows ↔ macOS через eX. Unity и Godot по умолчанию открываются в подходящем экрану окне; режим и разрешение сохраняются отдельно для каждой игры." TextWrapping="Wrap" />
               <TextBlock Classes="dim" FontSize="12" Text="Перенос на Android и функции для телефона и шлема — в версии для Windows." TextWrapping="Wrap" />
             </StackPanel>
           </Border>

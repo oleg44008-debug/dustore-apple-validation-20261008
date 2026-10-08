@@ -102,6 +102,8 @@ internal static class GameWindowChecks
             check(session.ProcessId == pid && values.GetProperty("logicalFramebufferWidth").GetInt32() == 5000
                 && values.GetProperty("logicalFramebufferHeight").GetInt32() == 3000,
                 "LaunchServices tracks the actual own native PID displaying a 5000x3000 logical game surface");
+            check(double.IsFinite(session.LaunchStamp) && session.LaunchStamp > 0,
+                "native session holds the actual LaunchServices launchDate token in addition to exact bundle and PID");
             check(frameW <= 780 && frameH <= 560 && values.GetProperty("cornersVisible").GetBoolean(),
                 "actual native high-resolution fixture fits the compact working-area contract and all four game corners remain visible");
             panel.UpdateLayout();
@@ -115,13 +117,16 @@ internal static class GameWindowChecks
             check(NativeGameControlPanel.IsMiniaturized(launcher) && panel.IsVisible && panel.ExitHittable,
                 "actual AppKit launcher miniaturization leaves the unowned NSPanel visible and hittable");
             bool launcherActuallyMiniaturized = NativeGameControlPanel.IsMiniaturized(launcher);
+            var launcherWindowsAtMinimize = NativeGameControlPanel.ObserveApplicationWindows();
+            long launcherWindowNumber = NativeGameControlPanel.NativeWindowNumberOf(launcher);
             await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-compact.png"));
             panel.PerformReturn(); await Task.Delay(150);
             check(launcher.WindowState != WindowState.Minimized && NativeAppSessions.Find(game.Id) is not null,
                 "actual Return restores the launcher while the exact native game continues running");
             await CapturePanelAsync(panel, Path.Combine(reportDirectory, "game-controls-native.png"));
             await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-return.png"));
-            observations.Add(new { mode = "windowed", fixture = values, panel = PanelMetrics(panel), launcherActuallyMiniaturized });
+            observations.Add(new { mode = "windowed", fixture = values, panel = PanelMetrics(panel), launcherActuallyMiniaturized,
+                launcherWindowNumber, launcherWindowsAtMinimize, nativeLaunchStamp = session.LaunchStamp });
             await File.WriteAllTextAsync(Path.Combine(reportDirectory, "game-window-native-snapshots.json"), JsonSerializer.Serialize(new { observations }, new JsonSerializerOptions { WriteIndented = true }));
             panel.SendExitKey(commandW: true);
             await UntilAsync(() => NativeAppSessions.Find(game.Id) is null && !panel.IsVisible, "native game Command-W exit");
@@ -136,7 +141,7 @@ internal static class GameWindowChecks
             panel = launcher.GameControls.Find(game.Id)!; panel.UpdateLayout();
             using var fullscreen = JsonDocument.Parse(await File.ReadAllTextAsync(fixtureReport));
             var fullValues = fullscreen.RootElement.Clone();
-            observations.Add(new { mode = "fullscreen", fixture = fullValues, panel = PanelMetrics(panel) });
+            observations.Add(new { mode = "fullscreen", fixture = fullValues, panel = PanelMetrics(panel), nativeLaunchStamp = NativeAppSessions.Find(game.Id)!.LaunchStamp });
             await File.WriteAllTextAsync(Path.Combine(reportDirectory, "game-window-native-snapshots.json"), JsonSerializer.Serialize(new { observations }, new JsonSerializerOptions { WriteIndented = true }));
             await CaptureDesktopAsync(Path.Combine(reportDirectory, "game-window-native-fullscreen.png"));
             check(fullValues.GetProperty("fullscreenRequested").GetBoolean(), "an explicit fullscreen choice remains a real native fullscreen request on reopen");

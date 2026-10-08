@@ -232,6 +232,24 @@ internal sealed class NativeGameControlPanel : IDisposable
     }
     internal static bool IsMiniaturized(Window window) => OperatingSystem.IsMacOS()
         && window.TryGetPlatformHandle() is { HandleDescriptor: "NSWindow" } handle && Native.Boolean(handle.Handle, "isMiniaturized");
+    internal static long NativeWindowNumberOf(Window window) => OperatingSystem.IsMacOS()
+        && window.TryGetPlatformHandle() is { HandleDescriptor: "NSWindow" } handle ? unchecked((long)Native.Unsigned(handle.Handle, "windowNumber")) : 0;
+    internal static object[] ObserveApplicationWindows()
+    {
+        Dispatcher.UIThread.VerifyAccess(); if (!OperatingSystem.IsMacOS()) return [];
+        var windows = Native.Pointer(Native.Pointer(Native.Class("NSApplication"), "sharedApplication"), "windows");
+        var observations = new List<object>();
+        for (nuint index = 0, count = Native.Unsigned(windows, "count"); index < count && index < 64; index++)
+        {
+            var window = Native.AtIndex(windows, Native.Sel("objectAtIndex:"), index);
+            var frame = Native.Rect(window, "frame");
+            observations.Add(new { processId = Environment.ProcessId, windowNumber = unchecked((long)Native.Unsigned(window, "windowNumber")),
+                nativeClass = Native.ClassName(window), title = Native.GetText(window, "title"), visible = Native.Boolean(window, "isVisible"),
+                miniaturized = Native.Boolean(window, "isMiniaturized"), onActiveSpace = Native.Boolean(window, "isOnActiveSpace"),
+                frame = new Rect(frame.X, frame.Y, frame.Width, frame.Height) });
+        }
+        return observations.ToArray();
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void ActionCallback(IntPtr self, IntPtr selector, IntPtr sender);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate byte EventCallback(IntPtr self, IntPtr selector, IntPtr @event);
@@ -252,6 +270,7 @@ internal sealed class NativeGameControlPanel : IDisposable
         [DllImport(ObjC)] private static extern IntPtr sel_registerName([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern IntPtr Send(IntPtr instance, IntPtr selector);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern IntPtr SendPointer(IntPtr instance, IntPtr selector, IntPtr value);
+        [DllImport(ObjC, EntryPoint = "objc_msgSend")] internal static extern IntPtr AtIndex(IntPtr instance, IntPtr selector, nuint index);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern IntPtr SendText(IntPtr instance, IntPtr selector, [MarshalAs(UnmanagedType.LPUTF8Str)] string value);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern void SendVoid(IntPtr instance, IntPtr selector);
         [DllImport(ObjC, EntryPoint = "objc_msgSend")] private static extern void SendSet(IntPtr instance, IntPtr selector, IntPtr value);

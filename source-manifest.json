@@ -9,8 +9,8 @@
     },
     "mac": {
       "owner": "mac_design",
-      "milestone": "mac_design explicit actual NSPanel+miniaturized+native click/key/corner gates freeze 2026-10-08 owner entries SHA0451a464d737f228ea903c7387a126cce47715db9ca471ff8a190972292154ed",
-      "snapshottedAtUtc": "2026-10-08T14:10:42.775447+00:00"
+      "milestone": "mac_design explicit final Free usable-settings/native UI Close/process-launch identity/NSPanel inventory freeze 2026-10-08 owner entries SHA61b7b9e712e033560b3f63d73025e4618d1565c3cea671bf1aca0f2537d722a8",
+      "snapshottedAtUtc": "2026-10-08T14:44:53.883610+00:00"
     }
   },
   "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
@@ -275,8 +275,8 @@
       "path": "launcher-mac/Controls/GameControlHub.cs",
       "source": "DustoreLauncherV-Mac/Controls/GameControlHub.cs",
       "platform": "mac",
-      "bytes": 2775,
-      "sha256": "e87b34d824dea332adab3bf6c3ed0cfd8730420f61f137951ffa60f4f45b772c"
+      "bytes": 2802,
+      "sha256": "07bd385b04df98b2269c63fe2e2759b10b3c8435a050e213f576245ed46d4603"
     },
     {
       "path": "launcher-mac/Controls/GameControlSurface.cs",
@@ -303,8 +303,8 @@
       "path": "launcher-mac/Controls/NativeGameControlPanel.cs",
       "source": "DustoreLauncherV-Mac/Controls/NativeGameControlPanel.cs",
       "platform": "mac",
-      "bytes": 24395,
-      "sha256": "6a172d35b32fcc4e906288814b41ceba9f509435462863931149e364f18f280f"
+      "bytes": 25913,
+      "sha256": "161b73d12bfbe9cc6741a7c5d3f70bc274edd53bfbca93fa675ab12b8aade004"
     },
     {
       "path": "launcher-mac/Controls/NativeWebView.cs",
@@ -331,15 +331,15 @@
       "path": "launcher-mac/MainWindow.axaml",
       "source": "DustoreLauncherV-Mac/MainWindow.axaml",
       "platform": "mac",
-      "bytes": 70588,
-      "sha256": "cb2f107736dcec1b572903453bbaf4cb00c24ed945da12cb1a5cb477465cfbbe"
+      "bytes": 70791,
+      "sha256": "36cbdb57f9da6a88bc7d02d4560b9e6ff4563cd723a77653ab36f79dbc015a47"
     },
     {
       "path": "launcher-mac/MainWindow.axaml.cs",
       "source": "DustoreLauncherV-Mac/MainWindow.axaml.cs",
       "platform": "mac",
-      "bytes": 24600,
-      "sha256": "bdb97c695bd415a95db816fc0a24d2fc88b0cd089d30721d22463b3fa80488cc"
+      "bytes": 26317,
+      "sha256": "9a24b7057ce0cd371c281557f0cfb84c3694d27eb66edb51ad156a52148bd6c0"
     },
     {
       "path": "launcher-mac/Program.cs",
@@ -401,8 +401,8 @@
       "path": "launcher-mac/Services/GameWindowChecks.cs",
       "source": "DustoreLauncherV-Mac/Services/GameWindowChecks.cs",
       "platform": "mac",
-      "bytes": 21460,
-      "sha256": "4014cff705e7658add82efe5fcbeb8997b629855ec469292881ec3d37ff6b214"
+      "bytes": 22026,
+      "sha256": "b900a9f7dbda241a4433e8d18bd4f698b2016e657fe6da23e02c1135d85a624c"
     },
     {
       "path": "launcher-mac/Services/LauncherServices.cs",
@@ -450,8 +450,8 @@
       "path": "launcher-mac/Services/NativeAppSessions.cs",
       "source": "DustoreLauncherV-Mac/Services/NativeAppSessions.cs",
       "platform": "mac",
-      "bytes": 6837,
-      "sha256": "d181c3abee9f404660a0b6ce6f9abb214ff2d00872a4d74b221f9fbfc663a829"
+      "bytes": 7927,
+      "sha256": "50f6b13a5f8dce1e50feb2865f8ef4434e3a959eb60eca8808a3cd80b18a82be"
     },
     {
       "path": "launcher-mac/Services/PlatformLauncher.cs",
@@ -478,8 +478,8 @@
       "path": "launcher-mac/Services/UiInteractionChecks.cs",
       "source": "DustoreLauncherV-Mac/Services/UiInteractionChecks.cs",
       "platform": "mac",
-      "bytes": 21454,
-      "sha256": "213de132c67dccb2abd79461acaa2f3d2db3761d38ff534013ee6817b8821fcb"
+      "bytes": 24155,
+      "sha256": "62a6135136f36331055b54a6b639dcf9ad53c7e07dc5b6b3464b85596ceaffa1"
     },
     {
       "path": "launcher-mac/Services/UiPreferences.cs",

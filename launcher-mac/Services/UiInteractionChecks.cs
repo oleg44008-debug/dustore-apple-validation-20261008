@@ -186,6 +186,23 @@ internal static class UiInteractionChecks
                     }
                     if (section == "settings")
                     {
+                        if (window.FreeAppearancePreview is { } preview)
+                        {
+                            window.FindControl<ScrollViewer>("SettingsPage")!.Offset = default; window.UpdateLayout();
+                            var motion = window.FindControl<CheckBox>("MotionToggle")!;
+                            var folder = window.FindControl<Button>("LibraryFolderButton")!;
+                            Check(!preview.IsExpanded && motion.IsEnabled && folder.IsEnabled,
+                                $"Free puts enabled motion and library settings before its collapsed Prime preview at {width}x{height}");
+                            foreach (var available in new Control[] { motion, folder })
+                            {
+                                var position = available.TranslatePoint(default, window);
+                                Check(position is { } p && p.Y >= 0 && p.Y + available.Bounds.Height <= window.ClientSize.Height + 1,
+                                    $"Free available {available.Name} is visible in the first settings viewport at {width}x{height}");
+                            }
+                            // A user can expand the preview. Preserve the original strict horizontal
+                            // and accessibility checks for all eight disabled controls in this state.
+                            preview.IsExpanded = true; window.UpdateLayout();
+                        }
                         var card = window.FindControl<Border>("AppearanceCard")!;
                         var options = window.FindControl<Grid>("AppearanceOptions")!;
                         foreach (var option in options.Children.OfType<CheckBox>())
@@ -204,6 +221,14 @@ internal static class UiInteractionChecks
                                 && label.DesiredSize.Width <= label.Bounds.Width + 1,
                                 $"preference label {name} is fully measured within its settings card at {width}x{height}");
                         }
+                        if (window.FreeAppearancePreview is { } expanded)
+                        {
+                            Check(options.Children.OfType<CheckBox>().All(option => !option.IsEffectivelyEnabled),
+                                $"Free preview retains all original Prime appearance gates at {width}x{height}");
+                            expanded.IsExpanded = false;
+                            window.FindControl<ScrollViewer>("SettingsPage")!.Offset = default;
+                            window.UpdateLayout();
+                        }
                     }
                     Save(window, Path.Combine(reportDirectory, $"interaction-{Edition.Name}-{width}x{height}-{section}.png"));
                     geometry.Add(new { width = window.ClientSize.Width, height = window.ClientSize.Height, section, shelfContainers = model.ShelfItems.Count });
@@ -217,8 +242,12 @@ internal static class UiInteractionChecks
                 layoutTimes.Add(watch.Elapsed.TotalMilliseconds);
             }
             var priorState = window.WindowState;
-            RaiseKey(window, Key.F11); Check(window.WindowState == WindowState.FullScreen, "F11 requests native fullscreen");
-            RaiseKey(window, Key.F11); Check(window.WindowState == priorState, "F11 restores the previous window state");
+            RaiseKey(window, Key.F11);
+            await UntilAsync(() => window.WindowState == WindowState.FullScreen, "native F11 fullscreen state notification");
+            Check(window.WindowState == WindowState.FullScreen, "F11 requests native fullscreen");
+            RaiseKey(window, Key.F11);
+            await UntilAsync(() => window.WindowState == priorState, "native F11 restore state notification");
+            Check(window.WindowState == priorState, "F11 restores the previous window state");
             model.ReduceMotion = true; model.Section = "ex"; await Task.Delay(60);
             Check(window.FindControl<Grid>("ExPage") is { Opacity: 1, RenderTransform: null }, "reduced motion leaves the active page fully visible");
             if (Edition.IsPrime)
@@ -243,7 +272,20 @@ internal static class UiInteractionChecks
                 testedEdition = Edition.Name, gameFpsMeasured = false
             };
         }
-        finally { window.Close(); model.Dispose(); }
+        finally
+        {
+            try
+            {
+                if (model.IsBusy)
+                {
+                    model.CancelOperation();
+                    await UntilAsync(() => !model.IsBusy, "owned UI fixture operation cancellation before close");
+                }
+                window.Close();
+                await UntilAsync(() => !window.IsVisible, "owned interaction window actually closes");
+            }
+            finally { model.Dispose(); }
+        }
 
         void Check(bool condition, string description)
         {

@@ -23,7 +23,7 @@ internal sealed class GameControlHub : IDisposable
         if (_disposed || !_launcher.IsVisible) return;
         var native = NativeAppSessions.Snapshot(); var wine = GameSessions.Snapshot();
         var ids = native.Select(s => s.Entry.Id).Concat(wine.Select(s => s.Entry.Id)).ToHashSet();
-        foreach (var id in _windows.Keys.Where(id => !ids.Contains(id)).ToArray())
+        foreach (var id in _windows.Keys.Where(id => !ids.Contains(id) || !_windows[id].IsVisible).ToArray())
         { _windows[id].Close(); _windows.Remove(id); }
         foreach (var session in native)
             Add(session.Entry, force => session.StopAsync(force, CancellationToken.None));

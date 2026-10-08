@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     public MainWindow(MainViewModel viewModel)
     {
         AvaloniaXamlLoader.Load(this);
+        FreeAppearancePreview = ArrangeFreeSettings();
         Title = "DUSTORE LAUNCHER V" + (Edition.IsPrime ? " Prime" : "");
         ViewModel = viewModel;
         DataContext = ViewModel;
@@ -123,6 +124,32 @@ public partial class MainWindow : Window
     public MainViewModel ViewModel { get; }
     public NativeWebView? WebView => _web;
     internal GameControlHub GameControls => _gameControls;
+    internal Expander? FreeAppearancePreview { get; }
+
+    private Expander? ArrangeFreeSettings()
+    {
+        if (Edition.IsPrime) return null;
+        // Build the Free hierarchy before assigning DataContext, so reparenting cannot reset
+        // a two-way preference binding. The original disabled Prime controls remain a preview.
+        var cards = this.FindControl<StackPanel>("SettingsCards")!;
+        var appearance = this.FindControl<Border>("AppearanceCard")!;
+        var contents = this.FindControl<StackPanel>("AppearanceContents")!;
+        var note = this.FindControl<TextBlock>("MotionPreferenceHint")!;
+        var motion = this.FindControl<CheckBox>("MotionToggle")!;
+        contents.Children.Remove(note); contents.Children.Remove(motion);
+        var comfort = new StackPanel { Spacing = 10 };
+        comfort.Children.Add(new TextBlock { Text = "Движение", FontSize = 16, FontWeight = Avalonia.Media.FontWeight.SemiBold });
+        comfort.Children.Add(note); comfort.Children.Add(motion);
+        var motionCard = new Border { Child = comfort }; motionCard.Classes.Add("card");
+        cards.Children.Remove(appearance);
+        var library = this.FindControl<Border>("LibrarySettingsCard")!;
+        cards.Children.Remove(library);
+        cards.Children.Insert(0, motionCard); cards.Children.Insert(1, library);
+        var preview = new Expander { Header = "Оформление Prime · посмотреть возможности", Content = appearance,
+            IsExpanded = false, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
+        cards.Children.Add(preview);
+        return preview;
+    }
 
     private void InstallNativeMenu()
     {
