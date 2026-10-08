@@ -9,8 +9,8 @@
     },
     "mac": {
       "owner": "mac_design",
-      "milestone": "mac_design FINAL 5.4.0: exact-Core Free+Prime build0errors0warnings; 104 offline interaction checks each; 16 owned-process/session/cache checks;12 packaging checks; native focus/localization/short-height fixes; owner freeze 2026-10-08",
-      "snapshottedAtUtc": "2026-10-08T11:18:25.687923+00:00"
+      "milestone": "mac_design taskpolicy checkpoint: only UltraMode /usr/sbin/taskpolicy and native required SessionChecks; exact-Core Free+Prime build0warnings0errors, services local PASS; final freeze pending Intel Wine diagnosis",
+      "snapshottedAtUtc": "2026-10-08T12:00:08.184374+00:00"
     }
   },
   "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
@@ -408,8 +408,8 @@
       "path": "launcher-mac/Services/SessionChecks.cs",
       "source": "DustoreLauncherV-Mac/Services/SessionChecks.cs",
       "platform": "mac",
-      "bytes": 10264,
-      "sha256": "8da84efd5a66c6450a8e90ced66ffee53bad16af1e78188cbb2e4833714a005b"
+      "bytes": 10422,
+      "sha256": "06510c8b5cc202adf7e4e999a0872411c043eaea64980b20bbba22a807e13710"
     },
     {
       "path": "launcher-mac/Services/UiInteractionChecks.cs",
@@ -429,8 +429,8 @@
       "path": "launcher-mac/Services/UltraMode.cs",
       "source": "DustoreLauncherV-Mac/Services/UltraMode.cs",
       "platform": "mac",
-      "bytes": 8126,
-      "sha256": "19b621801822d6b96a652d711e6aee49e2c25cd82943f5ae9543994cb355983d"
+      "bytes": 8127,
+      "sha256": "b52e0f8ca007b1d1d9f8c61fa2f5051eec7cf5ac5f7d39444be0c0ae77bc00fe"
     },
     {
       "path": "launcher-mac/Services/WebKitBridge.cs",

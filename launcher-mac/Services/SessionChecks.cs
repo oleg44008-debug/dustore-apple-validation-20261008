@@ -49,6 +49,8 @@ internal static class SessionChecks
         Check(!child.Environment.ContainsKey("DXMT_CONFIG") && Environment.GetEnvironmentVariable("DXMT_CONFIG") == inherited,
             "session graphics cleanup changes only the owned child's environment");
         Check(!wrapped || Edition.IsPrime && OperatingSystem.IsMacOS(), "Free never requests the ULTRA application policy");
+        if (Edition.IsPrime && OperatingSystem.IsMacOS())
+            Check(wrapped, "Prime uses the actual native taskpolicy application wrapper on macOS");
         string log = Path.Combine(directory, "noisy-child.log");
         var exit = await RunObservedAsync(entry, prefix, log, child, cancellation);
         Check(exit.ExitCode == 7 && exit.Error is not null, "nonzero child exits are reported after the actual process finishes");

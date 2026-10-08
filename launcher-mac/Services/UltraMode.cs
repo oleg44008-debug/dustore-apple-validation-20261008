@@ -111,7 +111,7 @@ public static class UltraMode
                 || key.StartsWith("D3DM_", StringComparison.Ordinal) || key is "WINEDLLOVERRIDES" or "WINEDLLPATH"
                 or "WINEESYNC" or "WINEMSYNC" or "ROSETTA_ADVERTISE_AVX" or "MTL_HUD_ENABLED") start.Environment.Remove(key);
         foreach (var (key, value) in environment) start.Environment[key] = value;
-        const string policy = "/usr/bin/taskpolicy";
+        const string policy = "/usr/sbin/taskpolicy";
         if (!ultra || !OperatingSystem.IsMacOS() || !File.Exists(policy)) return false;
         string executable = start.FileName;
         string[] arguments = start.ArgumentList.ToArray();
