@@ -19,6 +19,7 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args.Contains("--session-fixture")) return SessionChecks.RunFixture(args);
         if (args.Contains("--wine-smoke"))
         {
             // Headless Wine check for Mac CI: install, package with eX, run through the package script.

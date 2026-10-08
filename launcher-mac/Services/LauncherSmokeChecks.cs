@@ -6,7 +6,7 @@ using DustoreX.AutoConverter;
 namespace DustoreLauncherV.Mac.Services;
 
 public sealed record LauncherSmokeReport(bool Success, IReadOnlyList<string> Checks, string ProfileDirectory,
-    string? InputPath, bool SourcePreserved, string? Error = null, string? PreparedMacAppPath = null);
+    string? InputPath, bool SourcePreserved, string? Error = null, string? PreparedMacAppPath = null, object? SessionVerification = null);
 
 public static class LauncherSmokeChecks
 {
@@ -20,6 +20,7 @@ public static class LauncherSmokeChecks
         profileDirectory = Path.GetFullPath(profileDirectory);
         bool sourcePreserved = false;
         string? prepared = null;
+        object? sessionVerification = null;
         try
         {
             var fakePlatform = new RecordingPlatform();
@@ -94,6 +95,7 @@ public static class LauncherSmokeChecks
             Check(Edition.IsPrime == Edition.IsPrimeBuild,
                 "Free and Prime are separate compile-time editions with no runtime activation dependency");
             Directory.Delete(ultraDir, true);
+            sessionVerification = await SessionChecks.RunAsync(fixtures, cancellation).ConfigureAwait(false);
             Check(!Directory.Exists(emptyProfile), "service construction performs no profile filesystem writes before the GUI");
             Check((await emptyService.LoadLibraryAsync(cancellation).ConfigureAwait(false)).Count == 0
                 && Directory.Exists(emptyProfile), "an empty profile is created and loaded during async initialization");
@@ -219,7 +221,7 @@ public static class LauncherSmokeChecks
             sourcePreserved = HashSource(selected) == before;
             Check(sourcePreserved, "original game input remains byte-for-byte unchanged");
             Check(fakePlatform.OpenedApps.Count == 1, "smoke checks never execute a game; launch requests use the recording adapter");
-            return new LauncherSmokeReport(true, checks, profileDirectory, inputPath, sourcePreserved, PreparedMacAppPath: prepared);
+            return new LauncherSmokeReport(true, checks, profileDirectory, inputPath, sourcePreserved, PreparedMacAppPath: prepared, SessionVerification: sessionVerification);
 
             void Check(bool condition, string description)
             {
@@ -229,7 +231,7 @@ public static class LauncherSmokeChecks
         }
         catch (Exception ex)
         {
-            return new LauncherSmokeReport(false, checks, profileDirectory, inputPath, sourcePreserved, ex.GetType().Name + ": " + ex.Message, prepared);
+            return new LauncherSmokeReport(false, checks, profileDirectory, inputPath, sourcePreserved, ex.GetType().Name + ": " + ex.Message, prepared, sessionVerification);
         }
     }
 

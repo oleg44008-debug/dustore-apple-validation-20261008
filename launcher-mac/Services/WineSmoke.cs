@@ -29,8 +29,7 @@ internal static class WineSmoke
             .FirstOrDefault(p => p.Contains("x86_64-windows", StringComparison.Ordinal))
             ?? throw new InvalidOperationException("Wine has no x86_64-windows/cmd.exe to use as a test program.");
 
-        string game = Path.Combine(workDirectory, "wine-smoke-game", "WineSmoke");
-        if (Directory.Exists(game)) Directory.Delete(game, true);
+        string game = Path.Combine(workDirectory, "wine-smoke-game-" + Guid.NewGuid().ToString("N"), "WineSmoke");
         Directory.CreateDirectory(Path.Combine(game, "WineSmoke_Data"));
         File.Copy(cmd, Path.Combine(game, "WineSmoke.exe"));
         File.Copy(cmd, Path.Combine(game, "UnityCrashHandler64.exe")); // decoy the finder must skip
@@ -59,7 +58,14 @@ internal static class WineSmoke
         await File.WriteAllTextAsync(Path.Combine(workDirectory, "wine-smoke-output.txt"),
             $"exit {code}\nwine {versionText.Trim()}\nhome {wineHome}\n\n{output}", cancellation);
         bool token = output.Contains(Token, StringComparison.Ordinal);
-        if (!token) throw new InvalidOperationException($"The packaged game did not run under Wine (exit {code}): " + Tail(output));
+        if (!token || code != 0) throw new InvalidOperationException($"The packaged game did not run under Wine (exit {code}): " + Tail(output));
+        var directEntry = new GameEntry(Guid.NewGuid(), "WineSmoke", game, DateTimeOffset.UtcNow, PreparedMacAppPath: app, Ultra: true);
+        string directLog = Path.Combine(workDirectory, "wine-smoke-direct.log");
+        var directEnvironment = GameLaunchOptions.Environment(true, workDirectory);
+        directEnvironment[PlatformLauncher.GameLogKey] = directLog;
+        if (Edition.IsPrime) UltraMode.AddDxvk(directEnvironment, workDirectory);
+        object directSession = await VerifySessionAsync(directEntry, directLog, workDirectory,
+            () => WineGameSession.LaunchAsync(app, directEntry, ["/c", "echo", Token], directEnvironment, workDirectory, cancellation), cancellation);
         object? prime = null;
         if (Edition.IsPrime && UltraMode.UsesMetal)
         {
@@ -74,17 +80,56 @@ internal static class WineSmoke
             await WineRuntime.RunAsync(PrimeGraphics.WineBinary, new[] { "wineboot", "--init" }, metalEnv, TimeSpan.FromMinutes(10), cancellation);
             await WineRuntime.RunAsync(PrimeGraphics.WineServer, new[] { "-w" }, metalEnv, TimeSpan.FromMinutes(10), cancellation);
             var (metalCode, metalOutput) = await WineRuntime.RunAsync(PrimeGraphics.WineBinary, new[] { "cmd", "/c", "echo", Token }, metalEnv, TimeSpan.FromMinutes(5), cancellation);
-            if (!metalOutput.Contains(Token, StringComparison.Ordinal))
+            if (!metalOutput.Contains(Token, StringComparison.Ordinal) || metalCode != 0)
                 throw new InvalidOperationException($"The Prime Wine did not run Windows code (exit {metalCode}): " + Tail(metalOutput));
-            prime = new { dxmtLibraries = libraries, installSeconds = Math.Round(primeInstall.Elapsed.TotalSeconds, 1), ranWindowsCode = true };
+            var metalEntry = directEntry with { Id = Guid.NewGuid() };
+            string metalLog = Path.Combine(GameLaunchOptions.LogsDirectory(), metalEntry.Id.ToString("N") + "-metal.log");
+            object metalSession = await VerifySessionAsync(metalEntry, metalLog, Path.Combine(WineRuntime.Root, "prime"),
+                () => PrimeGraphics.LaunchAsync(app, metalEntry, ["/c", "echo", Token], cancellation), cancellation);
+            prime = new { dxmtLibraries = libraries, installSeconds = Math.Round(primeInstall.Elapsed.TotalSeconds, 1), ranWindowsCode = true,
+                directSession = metalSession, graphicsDeviceCreated = false, gameFpsMeasured = false };
         }
         return new
         {
             status = "Pass", edition = Edition.Name, primeMetal = prime, wineInstalledByLauncher = !wasInstalled, wineVersion = versionText.Trim(), wineArchive = WineRuntime.ArchiveName,
             wineSha256 = WineRuntime.Sha256, dxvkVersion = WineRuntime.DxvkVersion, dxvkLibraries = dxvk, installSeconds = Math.Round(install.Elapsed.TotalSeconds, 1), chosenExecutable = "WineSmoke.exe",
             decoySkipped = true, packagedRunExitCode = code, tokenSeen = token, runSeconds = Math.Round(run.Elapsed.TotalSeconds, 1),
-            totalSeconds = Math.Round(total.Elapsed.TotalSeconds, 1), appleSilicon = WineRuntime.IsAppleSilicon
+            totalSeconds = Math.Round(total.Elapsed.TotalSeconds, 1), appleSilicon = WineRuntime.IsAppleSilicon,
+            directSession, graphicsDeviceCreated = false, gameFpsMeasured = false,
+            scope = "Generated Windows command fixture only; package script and scoped direct Wine sessions. No D3D device or game benchmark."
         };
+    }
+
+    private static async Task<object> VerifySessionAsync(GameEntry entry, string log, string diagnosticsDirectory, Func<Task> launch, CancellationToken cancellation)
+    {
+        var completion = new TaskCompletionSource<GameSessionEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<GameSessionEventArgs> observer = (_, result) =>
+        {
+            if (result.Id == entry.Id && (result.ExitCode is not null || result.Error is not null)) completion.TrySetResult(result);
+        };
+        GameSessions.Changed += observer;
+        var watch = Stopwatch.StartNew();
+        try
+        {
+            await launch();
+            var result = await completion.Task.WaitAsync(TimeSpan.FromMinutes(3), cancellation);
+            string output = File.Exists(log + ".stdout") ? await File.ReadAllTextAsync(log + ".stdout", cancellation) : "";
+            if (result.ExitCode != 0 || result.Error is not null || !output.Contains(Token, StringComparison.Ordinal) || GameSessions.Find(entry.Id) is not null)
+                throw new InvalidOperationException($"Direct {result.Route} session failed: exit {result.ExitCode}; {result.Error}; " + Tail(output));
+            string diagnostic = Path.Combine(diagnosticsDirectory, "Performance", entry.Id.ToString("N") + ".json");
+            using var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(diagnostic, cancellation));
+            var root = document.RootElement;
+            return new { route = result.Route, processId = root.GetProperty("processId").GetInt32(), exitCode = result.ExitCode,
+                applicationResourcePolicyRequested = root.GetProperty("applicationResourcePolicyRequested").GetBoolean(),
+                tokenSeen = true, actualProcessAndPrefixLifetimeObserved = true, sessionRemovedAfterExit = true,
+                logBytes = new FileInfo(log).Length, elapsedSeconds = watch.Elapsed.TotalSeconds,
+                graphicsDeviceCreated = false, gameFpsMeasured = false };
+        }
+        finally
+        {
+            GameSessions.Changed -= observer;
+            if (GameSessions.Find(entry.Id) is { } active) await active.StopAsync(CancellationToken.None);
+        }
     }
 
     private static string Tail(string text) => text.Length > 1500 ? text[^1500..] : text;

@@ -104,6 +104,7 @@ public partial class MainWindow : Window
         DragDrop.AddDragLeaveHandler(this, (_, _) => { if (this.FindControl<Border>("DropHint") is { } hint) hint.IsVisible = false; });
         DragDrop.AddDropHandler(this, OnDrop);
         SizeChanged += (_, _) => UpdatePresentation();
+        PositionChanged += (_, _) => RefreshCurrentDisplay();
         Closed += (_, _) => { _surfaceMotion.Dispose(); IntroMotion.Skip(); ViewModel.Dispose(); };
         PropertyChanged += (_, args) =>
         {
@@ -171,6 +172,10 @@ public partial class MainWindow : Window
         ViewModel.SetPresentationSize(ClientSize.Width, ClientSize.Height);
         if (this.FindControl<Grid>("Shell") is { } shell) shell.ColumnDefinitions[0].Width = new GridLength(ViewModel.ExpandedNavigation ? 224 : 84);
         Classes.Set("compact", !ViewModel.ExpandedNavigation);
+        RefreshCurrentDisplay();
+    }
+    private void RefreshCurrentDisplay()
+    {
         if (Screens.ScreenFromWindow(this) is { } screen)
             UltraMode.Display = ((int)(screen.Bounds.Width / screen.Scaling), (int)(screen.Bounds.Height / screen.Scaling));
     }

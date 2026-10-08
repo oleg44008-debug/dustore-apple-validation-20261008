@@ -11,7 +11,7 @@
     <Company>eXepc</Company>
     <Version>5.4.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- Free or Prime; packaging passes -p:DustoreEdition=Prime for the subscriber build. -->
+    <!-- Separate Free or Prime edition; packaging passes -p:DustoreEdition=Prime. -->
     <DustoreEdition Condition="'$(DustoreEdition)' == ''">Free</DustoreEdition>
     <DefineConstants Condition="'$(DustoreEdition)' == 'Prime'">$(DefineConstants);PRIME</DefineConstants>
     <UseAppHost>true</UseAppHost>

@@ -17,7 +17,7 @@ internal static class WineGameSession
         string executablePath = Path.Combine(gameRoot, executable.Path.Replace('/', Path.DirectorySeparatorChar));
         environment["WINEPREFIX"] = GameLaunchOptions.WinePrefixOf(app)
             ?? throw new InvalidDataException("Не удалось определить окружение Wine этой игры.");
-        GameSessions.RequireAvailable(entry.Id, environment["WINEPREFIX"]);
+        using var reservation = GameSessions.Reserve(entry.Id, environment["WINEPREFIX"]);
         environment["WINEDLLOVERRIDES"] = "d3d11,dxgi,d3d10core=b;mscoree,mshtml=";
         string log = environment[PlatformLauncher.GameLogKey];
         var childEnvironment = environment.Where(pair => pair.Key != PlatformLauncher.GameLogKey).ToDictionary(pair => pair.Key, pair => pair.Value);
@@ -32,7 +32,7 @@ internal static class WineGameSession
         bool policy = UltraMode.ConfigureGameProcess(start, ultra, childEnvironment);
         var game = Process.Start(start) ?? throw new IOException("Не удалось запустить Wine.");
         UltraMode.WriteDiagnostics(profile, entry, "DXVK / Wine game process", arguments, childEnvironment, game.Id, policy);
-        GameSessions.Observe(game, entry, Path.Combine(Path.GetDirectoryName(wine)!, "wineserver"), environment["WINEPREFIX"], "DXVK", log, ultra);
+        GameSessions.Observe(game, entry, Path.Combine(Path.GetDirectoryName(wine)!, "wineserver"), environment["WINEPREFIX"], "DXVK", log, ultra, reservation);
         return Task.CompletedTask;
     }
 

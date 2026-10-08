@@ -113,7 +113,7 @@ public static class PrimeGraphics
         string id = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(entry.Id.ToString("N")))).ToLowerInvariant()[..20];
         string prefix = Path.Combine(WineRuntime.Root, "..", "WineMetal", id);
         prefix = Path.GetFullPath(prefix);
-        GameSessions.RequireAvailable(entry.Id, prefix);
+        using var reservation = GameSessions.Reserve(entry.Id, prefix);
         var environment = Environment(prefix, entry);
         if (!File.Exists(Path.Combine(prefix, "system.reg")))
         {
@@ -135,10 +135,10 @@ public static class PrimeGraphics
         };
         start.ArgumentList.Add(Path.GetFileName(exePath));
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
-        bool applicationPolicy = UltraMode.ConfigureGameProcess(start, entry.Ultra, environment);
+        bool applicationPolicy = UltraMode.ConfigureGameProcess(start, Edition.IsPrime && entry.Ultra, environment);
         var game = Process.Start(start) ?? throw new IOException("Не удалось запустить Wine.");
         UltraMode.WriteDiagnostics(Path.Combine(WineRuntime.Root, "prime"), entry, "DXMT / Metal", arguments, environment, game.Id, applicationPolicy);
-        GameSessions.Observe(game, entry, WineServer, prefix, "DXMT", Path.Combine(GameLaunchOptions.LogsDirectory(), entry.Id.ToString("N") + "-metal.log"), Edition.IsPrime && entry.Ultra);
+        GameSessions.Observe(game, entry, WineServer, prefix, "DXMT", Path.Combine(GameLaunchOptions.LogsDirectory(), entry.Id.ToString("N") + "-metal.log"), Edition.IsPrime && entry.Ultra, reservation);
     }
 
     public static Task StopAsync(GameEntry entry, CancellationToken cancellation)

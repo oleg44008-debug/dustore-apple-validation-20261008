@@ -15,23 +15,53 @@ internal static class GameSessions
 {
     private static readonly object Gate = new();
     private static readonly Dictionary<Guid, WineSession> Active = new();
+    private static readonly Dictionary<Guid, string> Pending = new();
     public static event EventHandler<GameSessionEventArgs>? Changed;
     public static bool HasWineSessions { get { lock (Gate) return Active.Count > 0; } }
     public static WineSession? Find(Guid id) { lock (Gate) return Active.GetValueOrDefault(id); }
 
-    public static void RequireAvailable(Guid id, string prefix)
+    public static Reservation Reserve(Guid id, string prefix)
     {
         lock (Gate)
-            if (Active.ContainsKey(id) || Active.Values.Any(s => s.Prefix.Equals(prefix, StringComparison.Ordinal)))
+        {
+            if (Active.ContainsKey(id) || Pending.ContainsKey(id)
+                || Active.Values.Any(s => s.Prefix.Equals(prefix, StringComparison.Ordinal))
+                || Pending.Values.Contains(prefix, StringComparer.Ordinal))
                 throw new InvalidOperationException("Игра в этом окружении Wine уже запущена. Сначала закройте её.");
+            Pending.Add(id, prefix);
+            return new Reservation(id, prefix);
+        }
     }
 
-    public static void Observe(Process process, GameEntry entry, string server, string prefix, string route, string log, bool ultra)
+    public static void Observe(Process process, GameEntry entry, string server, string prefix, string route, string log, bool ultra, Reservation reservation)
     {
         var session = new WineSession(process, entry, server, prefix, route, log, ultra);
-        lock (Gate) Active.Add(entry.Id, session);
+        lock (Gate)
+        {
+            if (reservation.Id != entry.Id || reservation.Prefix != prefix || reservation.Released || !Pending.ContainsKey(entry.Id))
+                throw new InvalidOperationException("Резерв запуска игры уже освобождён.");
+            Active.Add(entry.Id, session);
+            Pending.Remove(entry.Id);
+            reservation.Released = true;
+        }
         Changed?.Invoke(null, new(entry.Id, route));
         _ = CompleteAsync(session);
+    }
+
+    internal sealed class Reservation(Guid id, string prefix) : IDisposable
+    {
+        internal Guid Id { get; } = id;
+        internal string Prefix { get; } = prefix;
+        internal bool Released { get; set; }
+        public void Dispose()
+        {
+            lock (Gate)
+            {
+                if (Released) return;
+                Pending.Remove(Id);
+                Released = true;
+            }
+        }
     }
 
     private static async Task CompleteAsync(WineSession session)
@@ -124,7 +154,8 @@ internal static class GameSessions
         private void ReleaseAssertion()
         {
             if (_assertion is null) return;
-            try { if (!_assertion.HasExited) _assertion.Kill(entireProcessTree: false); } catch (InvalidOperationException) { }
+            try { if (!_assertion.HasExited) _assertion.Kill(entireProcessTree: false); }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
             _assertion.Dispose(); _assertion = null;
         }
         public void Dispose() { ReleaseAssertion(); process.Dispose(); }

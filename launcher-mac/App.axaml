@@ -111,6 +111,8 @@
     <!-- Buttons: capsules on translucent fills; only hover/press feedback moves. -->
     <Style Selector="Button">
       <Setter Property="Background" Value="{DynamicResource Fill}" />
+      <!-- Focus is drawn inside the template, so recycled shelf cards cannot leave a window-layer adorner. -->
+      <Setter Property="FocusAdorner" Value="{x:Null}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="10" />
@@ -376,10 +378,6 @@
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="RenderTransformOrigin" Value="50%,50%" />
     </Style>
-    <Style Selector="Button:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="BorderBrush" Value="{DynamicResource Orchid}" />
-      <Setter Property="BorderThickness" Value="1" />
-    </Style>
     <Style Selector="Button.primary">
       <Setter Property="BorderThickness" Value="0" />
     </Style>
@@ -444,6 +442,7 @@
       <Setter Property="BorderBrush" Value="{DynamicResource Orchid}" /><Setter Property="BorderThickness" Value="2" />
     </Style>
     <Style Selector="Button.tile:focus-visible Border.art"><Setter Property="BorderBrush" Value="{DynamicResource Accent}" /></Style>
+    <Style Selector="Button.tile:focus-visible /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="BorderThickness" Value="0" /></Style>
     <Style Selector="ToggleButton.ultra:checked /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Foreground" Value="{DynamicResource SelectionInk}" /></Style>
   </Application.Styles>
 </Application>

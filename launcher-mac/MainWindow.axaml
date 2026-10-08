@@ -177,7 +177,7 @@
         </ScrollViewer>
 
         <ScrollViewer Name="LibraryScroll" IsVisible="{Binding HasGames}" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-          <StackPanel Spacing="28" Margin="{Binding PageMargin}">
+          <StackPanel Spacing="{Binding LibrarySpacing}" Margin="{Binding PageMargin}">
 
             <!-- Hero: artwork, large title and the Play capsule, in the manner of the TV and App Store apps. -->
             <Border Name="GameHero" Background="{DynamicResource HeroSurface}" CornerRadius="26" BorderBrush="{DynamicResource BorderMid}" BorderThickness="1"
@@ -187,12 +187,12 @@
                         VerticalAlignment="Center" ClipToBounds="True">
                   <Grid>
                     <Image Source="{Binding SelectedCover}" IsVisible="{Binding SelectedHasCover}" Width="{Binding HeroCoverSize}" Height="{Binding HeroCoverSize}" Stretch="Uniform" />
-                    <TextBlock IsVisible="{Binding SelectedNoCover}" Classes="display" FontSize="104" Text="{Binding SelectedMonogram}" Foreground="{DynamicResource Orchid}"
+                    <TextBlock IsVisible="{Binding SelectedNoCover}" Classes="display" FontSize="{Binding HeroMonogramSize}" Text="{Binding SelectedMonogram}" Foreground="{DynamicResource Orchid}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                   </Grid>
                 </Border>
-                <StackPanel Grid.Column="1" Margin="20,0,0,0" Spacing="9" VerticalAlignment="Center">
-                  <StackPanel Orientation="Horizontal" Spacing="10">
+                <StackPanel Grid.Column="1" Margin="20,0,0,0" Spacing="{Binding HeroSpacing}" VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding ExpandedGameHero}">
                     <Border Classes="chip"><TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" Text="{Binding SelectedKind}" /></Border>
                     <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding SelectedReady}" VerticalAlignment="Center">
                       <Ellipse Width="7" Height="7" Fill="{DynamicResource Success}" />
@@ -235,7 +235,7 @@
             </Border>
 
             <!-- Shelf: segmented filter and add buttons. -->
-            <StackPanel Spacing="18">
+            <StackPanel Spacing="{Binding ShelfSpacing}">
               <WrapPanel>
                 <TextBlock Classes="display" FontSize="22" Text="Мои игры" VerticalAlignment="Center" Margin="0,0,18,8" />
                 <Border Classes="segmented" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,20,8">
@@ -339,7 +339,7 @@
                             <TextBlock Text="приоритет игре" Opacity="0.75" />
                           </StackPanel>
                         </ToggleButton>
-                        <ComboBox ItemsSource="{Binding FpsLimits}" SelectedItem="{Binding SelectedFpsLimit, Mode=TwoWay}" MinWidth="190" Margin="0,0,10,6" IsEnabled="{Binding !SelectedUltra}" IsVisible="{Binding SelectedIsWineGame}">
+                        <ComboBox ItemsSource="{Binding FpsLimits}" SelectedItem="{Binding SelectedFpsLimit, Mode=TwoWay}" MinWidth="190" Margin="0,0,10,6" IsEnabled="{Binding !SelectedUltra}" IsVisible="{Binding SelectedIsWineGame}" AutomationProperties.Name="Ограничение частоты кадров">
                           <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
                         </ComboBox>
                         <CheckBox Content="Счётчик FPS" IsChecked="{Binding SelectedShowFps, Mode=TwoWay}" Margin="0,0,14,6" />
@@ -453,7 +453,7 @@
                   </UniformGrid>
                   <StackPanel Spacing="7" IsVisible="{Binding IsMacTarget}">
                     <TextBlock Classes="dim" FontSize="12" Text="Процессор Mac, на котором будет запускаться игра" TextWrapping="Wrap" />
-                    <ComboBox ItemsSource="{Binding Architectures}" SelectedItem="{Binding SelectedArchitecture, Mode=TwoWay}" IsEnabled="{Binding CanChooseArchitecture}">
+                    <ComboBox ItemsSource="{Binding Architectures}" SelectedItem="{Binding SelectedArchitecture, Mode=TwoWay}" IsEnabled="{Binding CanChooseArchitecture}" AutomationProperties.Name="Архитектура готового пакета">
                       <ComboBox.ItemTemplate><DataTemplate DataType="vm:ArchitectureChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
                     </ComboBox>
                   </StackPanel>
@@ -540,11 +540,11 @@
                          Text="Темы, акцентный цвет, свои разделы в боковой панели и вступительная анимация доступны в DUSTORE LAUNCHER V Prime." />
               <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" IsEnabled="{Binding IsPrime}">
                 <TextBlock Classes="dim" Text="Тема" VerticalAlignment="Center" Margin="0,0,16,0" />
-                <ComboBox Grid.Column="1" ItemsSource="{Binding ThemeChoices}" SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" MaxWidth="260" HorizontalAlignment="Left">
+                <ComboBox Grid.Column="1" ItemsSource="{Binding ThemeChoices}" SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" MaxWidth="260" HorizontalAlignment="Left" AutomationProperties.Name="Тема оформления">
                   <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
                 </ComboBox>
                 <TextBlock Grid.Row="1" Classes="dim" Text="Акцент" VerticalAlignment="Center" Margin="0,10,16,0" />
-                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding AccentChoices}" SelectedItem="{Binding SelectedAccent, Mode=TwoWay}" MaxWidth="260" HorizontalAlignment="Left" Margin="0,10,0,0">
+                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding AccentChoices}" SelectedItem="{Binding SelectedAccent, Mode=TwoWay}" MaxWidth="260" HorizontalAlignment="Left" Margin="0,10,0,0" AutomationProperties.Name="Цвет выделения">
                   <ComboBox.ItemTemplate>
                     <DataTemplate>
                       <StackPanel Orientation="Horizontal" Spacing="8">

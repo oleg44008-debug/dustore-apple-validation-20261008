@@ -57,10 +57,17 @@ internal static class UiInteractionChecks
                 Check(name.Length > 0, "accessibility peer names " + (button.Name ?? button.Classes.FirstOrDefault() ?? "button"));
                 names[button.Name ?? button.Classes.FirstOrDefault() + ":" + names.Count] = name;
             }
+            foreach (var combo in window.GetVisualDescendants().OfType<ComboBox>())
+            {
+                string name = ControlAutomationPeer.CreatePeerForElement(combo)?.GetName() ?? "";
+                Check(name.Length > 0, "accessibility peer names the preference or architecture chooser");
+                names["chooser:" + names.Count] = name;
+            }
             Button first = TileFor(window, model.Games[0]); first.Focus();
             RaiseKey(first, Key.Right); await Task.Delay(60); window.UpdateLayout();
             Check(model.SelectedGame?.Entry.Id == model.Games[1].Entry.Id, "Right selects and focuses the next game");
             Button second = TileFor(window, model.Games[1]); second.Focus();
+            Check(second.FocusAdorner is null && second.IsFocused, "keyboard focus stays in the game card template without a detached window-layer adorner");
             RaiseKey(second, Key.Enter);
             await UntilAsync(() => platform.Apps.Count == 1 && !model.IsBusy, "Enter launch dispatch");
             Check(platform.Apps[0] == app && !model.SelectedLaunching, "Enter reaches exactly one recording launch; no fixed 6/45-second busy state");
@@ -78,8 +85,25 @@ internal static class UiInteractionChecks
             string love = Path.Combine(profile, "Fixture.love");
             using (var archive = ZipFile.Open(love, ZipArchiveMode.Create))
             using (var writer = new StreamWriter(archive.CreateEntry("main.lua").Open())) writer.Write("function love.draw() end");
+            var download = new DownloadSnapshot(91, "Fixture.love", love, 1, new FileInfo(love).Length, new FileInfo(love).Length,
+                DownloadStatus.Finished, "", "https://example.invalid/owned-fixture");
+            string downloadProfile = Path.Combine(profile, "download-lifetime");
+            var cancelledModel = new MainViewModel(new LauncherServices(downloadProfile, platform));
+            await cancelledModel.InitializeAsync(); cancelledModel.SetBackgroundWorkPaused(true); cancelledModel.UpdateDownload(download);
+            await Task.Delay(80);
+            Check(cancelledModel.Games.Count == 0 && !cancelledModel.IsBusy, "completed downloads wait for foreground before extracting or importing");
+            cancelledModel.Dispose(); await Task.Delay(80);
+            Check(cancelledModel.Games.Count == 0, "disposing a paused download cannot restart library work");
+            using (var resumedModel = new MainViewModel(new LauncherServices(downloadProfile, platform)))
+            {
+                await resumedModel.InitializeAsync(); resumedModel.SetBackgroundWorkPaused(true); resumedModel.UpdateDownload(download);
+                resumedModel.SetBackgroundWorkPaused(false);
+                await UntilAsync(() => resumedModel.DownloadReady && resumedModel.Games.Count == 1, "foreground download import");
+                Check(File.Exists(love), "restoring the launcher resumes the owned download import and preserves its source");
+            }
             model.SelectedTarget = model.Targets[1]; await model.SetSourceAsync(love);
             Check(model.PlanUsesRuntime && model.CanConvert, "eX exposes the existing LÖVE runtime editor after analysis");
+            Check(!model.PlanFacts.Contains("Portable or unknown", StringComparison.Ordinal), "eX localizes the platform-neutral source summary");
             model.GameName = "bad/name"; Check(!model.CanConvert && model.HasConversionValidation, "eX validates a malformed package name before conversion");
             model.GameName = "Fixture"; string output = model.OutputPath; Directory.CreateDirectory(Path.GetDirectoryName(output)!); File.WriteAllText(output, "sentinel");
             Check(!model.CanConvert, "eX refuses to overwrite an existing ZIP");
@@ -100,6 +124,15 @@ internal static class UiInteractionChecks
                         var point = convert.TranslatePoint(default, window);
                         Check(point is { } p && p.X >= 0 && p.Y >= 0 && p.X + convert.Bounds.Width <= window.ClientSize.Width + 1
                             && p.Y + convert.Bounds.Height <= window.ClientSize.Height + 1, $"eX action remains reachable at {width}x{height}");
+                    }
+                    if (section == "library" && height == 560)
+                    {
+                        window.FindControl<ScrollViewer>("LibraryScroll")!.Offset = default; window.UpdateLayout();
+                        var firstGame = model.Games[model.ShelfPageIndex * 60];
+                        var title = TileFor(window, firstGame).GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == firstGame.Name);
+                        var position = title.TranslatePoint(default, window);
+                        Check(position is { } p && p.Y >= 0 && p.Y + title.Bounds.Height <= window.ClientSize.Height + 1,
+                            "a short window shows the first game title in the initial viewport");
                     }
                     Save(window, Path.Combine(reportDirectory, $"interaction-{Edition.Name}-{width}x{height}-{section}.png"));
                     geometry.Add(new { width = window.ClientSize.Width, height = window.ClientSize.Height, section, shelfContainers = model.ShelfItems.Count });

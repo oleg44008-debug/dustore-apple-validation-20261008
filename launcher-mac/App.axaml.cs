@@ -78,8 +78,9 @@ public partial class App : Application
                         string settingsImagePath = Path.ChangeExtension(Program.SmokeReportPath, ".settings.png");
                         settingsBitmap.Save(settingsImagePath);
                         string emptyProfile = Path.Combine(Path.GetDirectoryName(Program.SmokeReportPath)!, "empty-" + Guid.NewGuid().ToString("N"));
-                        var emptyModel = new ViewModels.MainViewModel(new Services.LauncherServices(emptyProfile));
+                        using var emptyModel = new ViewModels.MainViewModel(new Services.LauncherServices(emptyProfile));
                         await emptyModel.InitializeAsync();
+                        emptyModel.SetPresentationSize(window.ClientSize.Width, window.ClientSize.Height);
                         window.DataContext = emptyModel;
                         await Task.Delay(350);
                         window.UpdateLayout();

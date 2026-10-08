@@ -30,7 +30,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly Dictionary<Guid, GameItemViewModel> _gameItems = new();
     private readonly HashSet<Guid> _coverAttempts = new();
     private CancellationTokenSource? _coverLoad;
-    private bool _disposed, _backgroundPaused, _compactWindow, _narrowWindow, _systemReduceMotion;
+    private bool _disposed, _backgroundPaused, _compactWindow, _narrowWindow, _shortWindow, _systemReduceMotion;
     private const int ShelfPageSize = 60, MaximumDecodedCovers = 96;
     private int _shelfPage, _coverDecodeCount;
     private double _operationPercent;
@@ -329,7 +329,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             if (GameSessions.Find(entry.Id) is { } running) await running.StopAsync(CancellationToken.None);
-            else if (!SelectedIsWineGame) await GameLaunchOptions.StopAsync(entry.PreparedMacAppPath ?? entry.SourcePath, CancellationToken.None);
+            else if (!await Task.Run(() => WineRuntime.IsWineWrapper(entry.PreparedMacAppPath ?? entry.SourcePath)))
+                await GameLaunchOptions.StopAsync(entry.PreparedMacAppPath ?? entry.SourcePath, CancellationToken.None);
             else throw new InvalidOperationException("Эта Wine-игра не запущена из текущей сессии лаунчера.");
             if (_launchingId == entry.Id) { _launchingId = null; NotifyLaunch(); }
             Status = "Запрос закрытия отправлен игре.";
@@ -375,22 +376,28 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool ShowPrimeRailCard => IsPrime && ExpandedNavigation;
     public double HeaderSize => _compactWindow ? 25 : 32;
     public double SearchWidth => _narrowWindow ? 180 : _compactWindow ? 225 : 260;
-    public Thickness HeaderPadding => _compactWindow ? new(22, 21, 22, 16) : new(34, 28, 30, 24);
+    public Thickness HeaderPadding => _shortWindow ? new(22, 16, 22, 12) : _compactWindow ? new(22, 21, 22, 16) : new(34, 28, 30, 24);
     public Thickness PageMargin => _compactWindow ? new(22, 4, 22, 28) : new(34, 6, 30, 34);
     public Thickness FooterPadding => _compactWindow ? new(22, 12, 22, 14) : new(34, 14, 30, 16);
     public Thickness NoticesMargin => new(_compactWindow ? 22 : 34, 0, _compactWindow ? 22 : 30, 12);
-    public Thickness HeroPadding => new(_compactWindow ? 18 : 24);
-    public double HeroArtSize => _compactWindow ? 90 : 124;
-    public double HeroCoverSize => _compactWindow ? 74 : 100;
-    public double HeroTitleSize => _compactWindow ? 26 : 32;
+    public Thickness HeroPadding => new(_shortWindow ? 12 : _compactWindow ? 18 : 24);
+    public double HeroArtSize => _shortWindow ? 64 : _compactWindow ? 90 : 124;
+    public double HeroCoverSize => _shortWindow ? 52 : _compactWindow ? 74 : 100;
+    public double HeroTitleSize => _shortWindow ? 24 : _compactWindow ? 26 : 32;
+    public double HeroMonogramSize => _shortWindow ? 52 : _compactWindow ? 76 : 104;
+    public double HeroSpacing => _shortWindow ? 5 : 9;
+    public double LibrarySpacing => _shortWindow ? 16 : 28;
+    public double ShelfSpacing => _shortWindow ? 12 : 18;
+    public bool ExpandedGameHero => !_shortWindow;
     public void SetPresentationSize(double width, double height)
     {
-        bool compact = width < 1100 || height < 740, narrow = width < 900;
-        if (_compactWindow == compact && _narrowWindow == narrow) return;
-        _compactWindow = compact; _narrowWindow = narrow;
+        bool compact = width < 1100 || height < 740, narrow = width < 900, shortWindow = height < 620;
+        if (_compactWindow == compact && _narrowWindow == narrow && _shortWindow == shortWindow) return;
+        _compactWindow = compact; _narrowWindow = narrow; _shortWindow = shortWindow;
         foreach (string p in new[] { nameof(ExpandedNavigation), nameof(ExpandedHeader), nameof(ExpandedStoreGroup), nameof(ShowFreeRailCard), nameof(ShowPrimeRailCard),
             nameof(HeaderSize), nameof(SearchWidth), nameof(HeaderPadding), nameof(PageMargin), nameof(FooterPadding), nameof(NoticesMargin),
-            nameof(HeroPadding), nameof(HeroArtSize), nameof(HeroCoverSize), nameof(HeroTitleSize), nameof(TileSize), nameof(TileArt) }) Notify(p);
+            nameof(HeroPadding), nameof(HeroArtSize), nameof(HeroCoverSize), nameof(HeroTitleSize), nameof(HeroMonogramSize), nameof(HeroSpacing),
+            nameof(LibrarySpacing), nameof(ShelfSpacing), nameof(ExpandedGameHero), nameof(TileSize), nameof(TileArt) }) Notify(p);
     }
     public string HeaderTitle => Section switch
     {
@@ -532,7 +539,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         foreach (string property in new[] { nameof(SelectedTheme), nameof(SelectedAccent), nameof(ShowExSection), nameof(ShowStoreSection), nameof(ShowHomeSection),
             nameof(ShowJamsSection), nameof(ShowAssetsSection), nameof(ShowStoreGroup), nameof(ShowHeroCard), nameof(CompactShelf), nameof(TileSize), nameof(TileArt),
-            nameof(IntroAnimation), nameof(ReduceMotion), nameof(HasSelectionAndHero) })
+            nameof(IntroAnimation), nameof(ReduceMotion), nameof(EffectiveReduceMotion), nameof(MotionPreferenceNote), nameof(HasSelectionAndHero) })
             Notify(property);
     }
 
@@ -644,6 +651,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private TaskCompletionSource? _foregroundResume;
     public void SetBackgroundWorkPaused(bool paused)
     {
+        if (_disposed || _backgroundPaused == paused) return;
         _backgroundPaused = paused;
         if (paused) _foregroundResume ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
         else { _foregroundResume?.TrySetResult(); _foregroundResume = null; }
@@ -653,7 +661,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private async Task ImportDownloadAsync(DownloadSnapshot download)
     {
         // A running operation finishes first; downloads never interrupt eX.
-        while (IsBusy) await Task.Delay(300);
+        while (IsBusy && !_disposed) await Task.Delay(300);
+        if (_disposed) return;
         // A completed download stays on disk while the launcher is minimized. Large ZIP
         // extraction and artwork scanning resume when the user restores the launcher.
         while (_foregroundResume is { } resume)
@@ -661,6 +670,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             _downloadNote = "Скачано. Добавление в библиотеку продолжится после открытия лаунчера.";
             NotifyDownload();
             await resume.Task;
+            if (_disposed) return;
         }
         await PerformAsync("Добавляю скачанную игру в библиотеку…", async ct =>
         {
@@ -726,7 +736,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     // eX.
     public string PlanTitle => _plan?.Title ?? "Выберите игру — eX проверит её";
     public string PlanDetail => _plan?.Detail ?? "eX определит движок и доступный способ переноса. Исходные файлы останутся на месте.";
-    public string PlanFacts => _plan is null ? "Godot · LÖVE · Ren’Py · NW.js" : $"{_plan.Engine}  ·  {_plan.SourcePlatform} → {_plan.Target}";
+    public string PlanFacts => _plan is null ? "Godot · LÖVE · Ren’Py · NW.js" : $"{_plan.Engine}  ·  {PlanSourceLabel(_plan.SourcePlatform)} → {_plan.Target}";
+    private static string PlanSourceLabel(string source) => source switch
+    {
+        "Portable or unknown" or "Переносимые данные" => "данные игры",
+        "macOS app bundle" => "macOS",
+        "Не определена" => "платформа не определена",
+        _ => source
+    };
     public string PlanWarnings => _plan is null ? "" : string.Join("\n\n", _plan.Warnings);
     public bool HasWarnings => _plan?.Warnings.Count > 0;
     public string PlanChip => _plan is null ? "Ожидает анализа" : _plan.CanConvert ? "Доступен перенос" : "Перенос недоступен";
@@ -1104,7 +1121,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_disposed) return; _disposed = true;
         GameSessions.Changed -= OnGameSessionChanged;
-        _coverLoad?.Cancel(); _foregroundResume?.TrySetResult();
+        _coverLoad?.Cancel(); _coverLoad?.Dispose(); _coverLoad = null;
+        _foregroundResume?.TrySetResult(); _foregroundResume = null;
+        _operation?.Cancel();
         foreach (var item in _gameItems.Values) item.Cover = null;
         foreach (var bitmap in _covers.Values) bitmap.Dispose(); _covers.Clear();
     }
@@ -1143,7 +1162,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     private async Task PerformAsync(string status, Func<CancellationToken, Task> action)
     {
-        if (IsBusy) return;
+        if (IsBusy || _disposed) return;
         using var cancellation = new CancellationTokenSource();
         _operation = cancellation;
         _operationPercent = 0; _operationIndeterminate = true;
@@ -1212,9 +1231,14 @@ public sealed class GameItemViewModel : INotifyPropertyChanged
     public bool CapabilitiesKnown { get; private set; }
     public void UpdateEntry(GameEntry entry)
     {
-        if (Entry == entry) return;
-        if (Entry.PreparedMacAppPath != entry.PreparedMacAppPath || Entry.SourcePath != entry.SourcePath) CapabilitiesKnown = false;
+        bool pathsChanged = Entry.PreparedMacAppPath != entry.PreparedMacAppPath || Entry.SourcePath != entry.SourcePath;
+        bool previousLaunch = _canLaunch, previousSource = _sourceExists;
+        string previousKind = _kind;
+        bool entryChanged = Entry != entry;
+        if (pathsChanged) CapabilitiesKnown = false;
         Entry = entry; ReadEntryFacts();
+        if (!entryChanged && previousLaunch == _canLaunch && previousSource == _sourceExists && previousKind == _kind) return;
+        if (previousLaunch != _canLaunch || previousSource != _sourceExists) CapabilitiesKnown = false;
         foreach (string p in new[] { nameof(Name), nameof(SourcePath), nameof(CanLaunch), nameof(Status), nameof(ShortStatus), nameof(KindChip), nameof(Monogram), nameof(AccessibleName) }) Raise(p);
     }
     private void ReadEntryFacts() { _canLaunch = Entry.CanLaunchOnMac; _sourceExists = Entry.SourceExists; _kind = Entry.Kind; }
