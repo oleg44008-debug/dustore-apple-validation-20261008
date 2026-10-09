@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "root-reviewed-store-scroll-identifier-localization-v4-20261009",
-      "snapshottedAtUtc": "2026-10-09T18:57:25.371339+00:00"
+      "milestone": "root-reviewed-accessible-ex-import-v5-independent-tablet-20261009",
+      "snapshottedAtUtc": "2026-10-09T19:15:21.905490+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -156,8 +156,8 @@
       "path": "ios/App/Views.swift",
       "source": "DustoreIOS/App/Views.swift",
       "platform": "ios",
-      "bytes": 36649,
-      "sha256": "669ffa135cbc455e152de11f171c08254d6076a538ffbf4ee802bb77f85df0f5"
+      "bytes": 37449,
+      "sha256": "a6271faa66139a2bfa09a8ec90024d355f7eca32c1e6a69bae3ca87eacafe183"
     },
     {
       "path": "ios/App/WebViews.swift",

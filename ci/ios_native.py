@@ -150,15 +150,17 @@ def main() -> int:
         phone_pass = run.run("iphone-build-analyze-unit-ui", ["bash", "Scripts/validate-apple.sh"], 2100, source, env)
         if phone_pass:
             run.run("unsigned-device-package", ["bash", "Scripts/package-unsigned-device.sh", args.edition], 120, source, env)
-            tablet_id = owned[1]["udid"]
-            if run.run("ipad-boot", ["xcrun", "simctl", "boot", tablet_id], 150):
-                if run.run("ipad-boot-ready", ["xcrun", "simctl", "bootstatus", tablet_id, "-b"], 240):
-                    tablet_result = validation / f"{args.edition}-iPad-Tests.xcresult"
-                    run.run("ipad-native-ui-tests", ["xcodebuild", "-project", "DustoreX.xcodeproj", "-scheme", "DustoreX-" + args.edition,
-                            "-configuration", args.edition + "Debug", "-destination", "id=" + tablet_id,
-                            "-derivedDataPath", "Validation/Derived-" + args.edition + "Debug",
-                            "-resultBundlePath", str(tablet_result), "-parallel-testing-enabled", "NO",
-                            "-only-testing:DustoreXUITests", "CODE_SIGNING_ALLOWED=NO", "test"], 900, source, env)
+        # The independent tablet suite must still report its failures when the
+        # phone suite fails. NativeRun retains the required failed phone check.
+        tablet_id = owned[1]["udid"]
+        if run.run("ipad-boot", ["xcrun", "simctl", "boot", tablet_id], 150):
+            if run.run("ipad-boot-ready", ["xcrun", "simctl", "bootstatus", tablet_id, "-b"], 240):
+                tablet_result = validation / f"{args.edition}-iPad-Tests.xcresult"
+                run.run("ipad-native-ui-tests", ["xcodebuild", "-project", "DustoreX.xcodeproj", "-scheme", "DustoreX-" + args.edition,
+                        "-configuration", args.edition + "Debug", "-destination", "id=" + tablet_id,
+                        "-derivedDataPath", "Validation/Derived-" + args.edition + "Debug",
+                        "-resultBundlePath", str(tablet_result), "-parallel-testing-enabled", "NO",
+                        "-only-testing:DustoreXUITests", "CODE_SIGNING_ALLOWED=NO", "test"], 900, source, env)
 
         simulator_app = validation / ("Derived-" + args.edition + "Debug") / "Build/Products" / (args.edition + "Debug-iphonesimulator") / "DustoreX.app"
         if phone_pass and simulator_app.is_dir():

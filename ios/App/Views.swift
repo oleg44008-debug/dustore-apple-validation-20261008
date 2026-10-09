@@ -352,6 +352,7 @@ struct GameCard: View {
 
 struct ExScreen: View {
     @EnvironmentObject var library: Library
+    @Environment(\.dynamicTypeSize) private var dynamicType
     let importGame: () -> Void, openStore: () -> Void
     var body: some View {
         ScrollView {
@@ -361,7 +362,9 @@ struct ExScreen: View {
                     HStack { Eyebrow(text: "Перенос игр"); Spacer(); Image(systemName: "arrow.left.arrow.right").font(.title).foregroundColor(Theme.selection).accessibilityHidden(true) }
                     DisplayTitle(text: "Выберите игру.\neX сделает следующий шаг.", size: 28)
                     Text("Скопируйте архив сборки в Файлы. Мы распакуем его, проверим движок и, если игра поддерживается, подготовим запуск на устройстве.").font(.body).foregroundColor(Theme.muted).fixedSize(horizontal: false, vertical: true)
-                    YellowButton(title: "Выбрать файл игры", symbol: "doc.badge.plus") { importGame() }.disabled(library.isBusy).accessibilityIdentifier("ex.import")
+                    if !dynamicType.isAccessibilitySize {
+                        YellowButton(title: "Выбрать файл игры", symbol: "doc.badge.plus") { importGame() }.disabled(library.isBusy).accessibilityIdentifier("ex.import")
+                    }
                     Button(action: openStore) { Label("Найти игру в магазине", systemImage: "bag").frame(maxWidth: .infinity) }.buttonStyle(PrimePressStyle()).accessibilityIdentifier("ex.store")
                     Text(library.quotaLine).font(.caption).foregroundColor(Theme.dim).fixedSize(horizontal: false, vertical: true)
                 }
@@ -380,6 +383,15 @@ struct ExScreen: View {
                     SupportRow(symbol: "exclamationmark.circle", title: "Unity и Godot C# не поддерживаются", detail: Porter.unityMessage + " Godot C# не поддерживается веб-движком.", color: Theme.warn)
                 }
             }.frame(maxWidth: 850, alignment: .leading).padding(22).frame(maxWidth: .infinity)
+        }.safeAreaInset(edge: .bottom, spacing: 0) {
+            if dynamicType.isAccessibilitySize {
+                YellowButton(title: "Выбрать файл игры", symbol: "doc.badge.plus", action: importGame)
+                    .disabled(library.isBusy).accessibilityIdentifier("ex.import")
+                    .accessibilitySortPriority(1)
+                    .frame(maxWidth: 600).padding(.horizontal, 22).padding(.vertical, 12)
+                    .frame(maxWidth: .infinity).background(Theme.background)
+                    .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1).accessibilityHidden(true) }
+            }
         }.background { PrimeBackdrop() }.toolbarBackground(Theme.background, for: .tabBar)
     }
 }
