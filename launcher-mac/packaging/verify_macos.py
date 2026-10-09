@@ -167,10 +167,21 @@ def validate_ui_report(report: dict, require_input: bool) -> None:
     if store.get("failedLoadShowsError") is not True:
         raise ValueError("A failed in-app page load left an empty view instead of the error screen.")
     download = store.get("storeDownload") or {}
-    if require_input and (download.get("addedToLibrary") is not True or download.get("readyToLaunch") is not True):
+    if download.get("addedToLibrary") is not True or download.get("readyToLaunch") is not True:
         raise ValueError("A store download did not land in the library ready to launch.")
-    if require_input and (download.get("downloadQuarantined") is not False or download.get("otherSiteDownloadQuarantined") is not True):
+    if download.get("downloadQuarantined") is not False or download.get("otherSiteDownloadQuarantined") is not True:
         raise ValueError("Quarantine handling differs: store downloads must be clear, other sites must keep the marker.")
+    overlap = download.get("overlappingDownloads") or {}
+    if (overlap.get("status") != "Pass" or overlap.get("supersededDownloadCallbacks", 0) < 1
+            or overlap.get("incompleteReplacementImported") is not False
+            or overlap.get("completeReplacementImported") is not True
+            or overlap.get("exactFileBytesPreserved") is not True):
+        raise ValueError("The real overlapping WKDownload callback and complete-byte import checks did not pass.")
+    cancellation = overlap.get("explicitCancellation") or {}
+    if (cancellation.get("status") != "Pass" or cancellation.get("downloadStatus") != "Cancelled"
+            or cancellation.get("identityPreserved") is not True or cancellation.get("retryAvailable") is not True
+            or cancellation.get("incompleteDownloadImported") is not False):
+        raise ValueError("An explicitly cancelled native WKDownload did not retain its identity/status/retry without importing incomplete bytes.")
 
 
 def inspect_rendered_image(image: Path, output: Path) -> dict:

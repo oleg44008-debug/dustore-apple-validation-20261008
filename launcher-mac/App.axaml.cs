@@ -203,8 +203,10 @@ public partial class App : Application
                 + $"url='{web.State.Url}' loading={web.State.IsLoading} bridgeError={(Services.WebKitBridge.LastError is null ? "none" : "set")}");
         var failure = window.ViewModel.WebError!;
         window.ViewModel.ClearWebError();
-        object? download = Program.SmokeInputPath is { } game && game.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
-            ? await VerifyStoreDownloadAsync(window, web, game) : null;
+        string game = Program.SmokeInputPath is { } input && input.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+            ? input : Services.GameWindowChecks.DownloadFixtureZip
+                ?? throw new InvalidOperationException("The owned native download fixture was not prepared.");
+        object download = await VerifyStoreDownloadAsync(window, web, game);
         return new
         {
             storeDownload = download,
@@ -289,6 +291,7 @@ public partial class App : Application
         string origin = $"http://127.0.0.1:{port}";
         var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var listener = new System.Net.HttpListener();
         listener.Prefixes.Add(origin + "/"); listener.Start();
         _ = Task.Run(async () =>
@@ -304,6 +307,7 @@ public partial class App : Application
                     {
                         string path = context.Request.Url?.AbsolutePath ?? "/";
                         bool first = path.Contains("first", StringComparison.Ordinal);
+                        bool cancelled = path.Contains("cancelled", StringComparison.Ordinal);
                         if (path.EndsWith(".zip", StringComparison.Ordinal))
                         {
                             context.Response.ContentType = "application/zip";
@@ -313,12 +317,12 @@ public partial class App : Application
                             await file.ReadExactlyAsync(head);
                             await context.Response.OutputStream.WriteAsync(head);
                             await context.Response.OutputStream.FlushAsync();
-                            await (first ? releaseFirst.Task : releaseSecond.Task).WaitAsync(TimeSpan.FromSeconds(30));
+                            await (first ? releaseFirst.Task : cancelled ? releaseCancelled.Task : releaseSecond.Task).WaitAsync(TimeSpan.FromSeconds(30));
                             await file.CopyToAsync(context.Response.OutputStream);
                         }
                         else
                         {
-                            string name = first ? "first" : "second";
+                            string name = first ? "first" : cancelled ? "cancelled" : "second";
                             byte[] html = System.Text.Encoding.UTF8.GetBytes("<!doctype html><html><head><meta charset=\"utf-8\"><title>Dustore — overlap " + name
                                 + "</title><meta http-equiv=\"refresh\" content=\"1;url=/" + name + ".zip\"></head><body>Скачать</body></html>");
                             context.Response.ContentType = "text/html; charset=utf-8";
@@ -362,12 +366,31 @@ public partial class App : Application
                     await System.Security.Cryptography.SHA256.HashDataAsync(actualFile))
                 || window.ViewModel.Games.Count != libraryBefore + 1)
                 throw new InvalidOperationException("The replacement download was imported before its complete original bytes arrived.");
+
+            web.Navigate(origin + "/cancelled");
+            await UntilAsync(() => Services.WebKitBridge.CurrentDownload is { Status: Services.DownloadStatus.Running, Name: "overlap cancelled" } held
+                && held.Id > second.Id && held.Path.Length > 0, "the held native download before explicit cancel");
+            var held = Services.WebKitBridge.CurrentDownload!;
+            Services.WebKitBridge.CancelDownload();
+            await UntilAsync(() => window.ViewModel.LastDownload?.Id == held.Id && window.ViewModel.DownloadCanRetry,
+                "explicit native cancellation status and retry");
+            await Task.Delay(500); // Ordinary import polling must not consume the incomplete cancelled ZIP.
+            var cancelledDownload = Services.WebKitBridge.CurrentDownload!;
+            bool cancelledIdentityPreserved = cancelledDownload.Id == held.Id && cancelledDownload.Path == held.Path
+                && cancelledDownload.Name == held.Name && cancelledDownload.Status == Services.DownloadStatus.Cancelled;
+            bool cancelledDownloadImported = window.ViewModel.Games.Count != libraryBefore + 1
+                || window.ViewModel.DownloadedGameId is not null;
+            if (!cancelledIdentityPreserved || !window.ViewModel.DownloadCanRetry || cancelledDownloadImported)
+                throw new InvalidOperationException("Explicit WKDownload cancellation lost its identity/status or imported the incomplete file.");
             return new { status = "Pass", supersededDownloadCallbacks = Services.WebKitBridge.SupersededDownloadCallbackCount - ignoredBefore,
-                incompleteReplacementImported = false, completeReplacementImported = true, exactFileBytesPreserved = true };
+                incompleteReplacementImported = false, completeReplacementImported = true, exactFileBytesPreserved = true,
+                explicitCancellation = new { status = "Pass", downloadStatus = cancelledDownload.Status.ToString(),
+                    identityPreserved = cancelledIdentityPreserved, retryAvailable = window.ViewModel.DownloadCanRetry,
+                    incompleteDownloadImported = cancelledDownloadImported } };
         }
         finally
         {
-            releaseFirst.TrySetResult(); releaseSecond.TrySetResult(); listener.Stop();
+            releaseFirst.TrySetResult(); releaseSecond.TrySetResult(); releaseCancelled.TrySetResult(); listener.Stop();
             ViewModels.MainViewModel.TrustedStoreHosts.Remove(trustedHost);
         }
 

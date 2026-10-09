@@ -55,7 +55,13 @@ internal static unsafe partial class WebKitBridge
     public static void CancelDownload()
     {
         if (_download != IntPtr.Zero && _downloadStatus == DownloadStatus.Running)
-            SendVoid(_download, Sel("cancel:"), IntPtr.Zero);
+        {
+            IntPtr download = _download; int id = _downloadId;
+            SendVoid(download, Sel("cancel:"), IntPtr.Zero);
+            // WebKit suppresses didFail after an explicit cancellation.
+            if (_download == download && _downloadId == id)
+            { _downloadStatus = DownloadStatus.Cancelled; _downloadError = ""; }
+        }
     }
 
     private static void RegisterDownloadMethods(IntPtr cls)
@@ -117,7 +123,6 @@ internal static unsafe partial class WebKitBridge
         {
             if (_download == download) return;
             IntPtr previous = _download;
-            bool cancelPrevious = _downloadStatus == DownloadStatus.Running;
             _download = Send(download, Sel("retain"));
             SendVoid(download, Sel("setDelegate:"), self);
             _downloadId++;
@@ -127,9 +132,8 @@ internal static unsafe partial class WebKitBridge
             _downloadPage = _pendingPage;
             if (previous != IntPtr.Zero)
             {
-                // The UI owns one active download. Publish the replacement identity first:
-                // cancel may deliver the previous download's terminal callback immediately.
-                if (cancelPrevious) SendVoid(previous, Sel("cancel:"), IntPtr.Zero);
+                // Older downloads may finish normally. Their callbacks cannot replace
+                // the current download's identity, destination or import state.
                 Send(previous, Sel("release"));
             }
         }

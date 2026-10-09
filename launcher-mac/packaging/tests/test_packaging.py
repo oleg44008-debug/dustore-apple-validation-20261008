@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import copy
 from pathlib import Path
 import stat
 import struct
@@ -93,7 +94,14 @@ class PackagingBoundaryChecks(unittest.TestCase):
                   "libraryEntryCount": 1, "exAnalysisReady": True,
                   "embeddedStore": {"webViewCreated": True, "url": "https://dustore.ru/explore", "failedLoadShowsError": True,
                                     "storeDownload": {"addedToLibrary": True, "readyToLaunch": True,
-                                                      "downloadQuarantined": False, "otherSiteDownloadQuarantined": True}}}
+                                                      "downloadQuarantined": False, "otherSiteDownloadQuarantined": True,
+                                                      "overlappingDownloads": {"status": "Pass", "supersededDownloadCallbacks": 1,
+                                                                               "incompleteReplacementImported": False,
+                                                                               "completeReplacementImported": True,
+                                                                               "exactFileBytesPreserved": True,
+                                                                               "explicitCancellation": {"status": "Pass", "downloadStatus": "Cancelled",
+                                                                                                        "identityPreserved": True, "retryAvailable": True,
+                                                                                                        "incompleteDownloadImported": False}}}}}
         validate_ui_report(report, True)
         for field, value in (("windowOpened", False), ("libraryEntryCount", 0), ("exAnalysisReady", False),
                              ("embeddedStore", None), ("embeddedStore", {"webViewCreated": False, "url": "https://dustore.ru/explore"}),
@@ -107,6 +115,36 @@ class PackagingBoundaryChecks(unittest.TestCase):
             invalid = {**report, field: value}
             with self.subTest(field=field), self.assertRaises(ValueError):
                 validate_ui_report(invalid, True)
+
+        # The owned native download runs even when no external Godot input was supplied.
+        validate_ui_report(report, False)
+        for require_input in (False, True):
+            for value in (None, {}):
+                invalid = copy.deepcopy(report)
+                invalid["embeddedStore"]["storeDownload"] = value
+                with self.subTest(require_input=require_input, missing_download=value), self.assertRaises(ValueError):
+                    validate_ui_report(invalid, require_input)
+            for field, value in (("status", "Skipped"), ("supersededDownloadCallbacks", 0),
+                                 ("incompleteReplacementImported", True), ("completeReplacementImported", False),
+                                 ("exactFileBytesPreserved", False)):
+                invalid = copy.deepcopy(report)
+                invalid["embeddedStore"]["storeDownload"]["overlappingDownloads"][field] = value
+                with self.subTest(require_input=require_input, overlap_field=field), self.assertRaises(ValueError):
+                    validate_ui_report(invalid, require_input)
+            invalid = copy.deepcopy(report)
+            del invalid["embeddedStore"]["storeDownload"]["overlappingDownloads"]
+            with self.subTest(require_input=require_input, missing_overlap=True), self.assertRaises(ValueError):
+                validate_ui_report(invalid, require_input)
+            for field, value in (("status", "Skipped"), ("downloadStatus", "Running"), ("identityPreserved", False),
+                                 ("retryAvailable", False), ("incompleteDownloadImported", True)):
+                invalid = copy.deepcopy(report)
+                invalid["embeddedStore"]["storeDownload"]["overlappingDownloads"]["explicitCancellation"][field] = value
+                with self.subTest(require_input=require_input, cancellation_field=field), self.assertRaises(ValueError):
+                    validate_ui_report(invalid, require_input)
+            invalid = copy.deepcopy(report)
+            del invalid["embeddedStore"]["storeDownload"]["overlappingDownloads"]["explicitCancellation"]
+            with self.subTest(require_input=require_input, missing_cancellation=True), self.assertRaises(ValueError):
+                validate_ui_report(invalid, require_input)
 
     def test_render_evidence_must_stay_in_owned_output(self):
         with tempfile.TemporaryDirectory() as temporary:

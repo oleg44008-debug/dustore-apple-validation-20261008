@@ -9,8 +9,8 @@
     },
     "mac": {
       "owner": "mac_design",
-      "milestone": "Iteration4 bugfix 5.4.2 download-identity and native-launch-cancellation",
-      "snapshottedAtUtc": "2026-10-09T21:10:19.015602+00:00"
+      "milestone": "Iteration4 final5.4.2 native cancellation and mandatory real WKDownload regression",
+      "snapshottedAtUtc": "2026-10-09T21:27:26.429308+00:00"
     }
   },
   "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
@@ -254,8 +254,8 @@
       "path": "launcher-mac/App.axaml.cs",
       "source": "DustoreLauncherV-Mac/App.axaml.cs",
       "platform": "mac",
-      "bytes": 28550,
-      "sha256": "6dd429cde6da54d129e30fc206a1366ca876ca1eb9b1b27cb11b46a53967f104"
+      "bytes": 30801,
+      "sha256": "23307080a91e191644310815151cece0278ac9e80844ab6a3f4e4338d2b177dc"
     },
     {
       "path": "launcher-mac/Assets/dustore-logo-original.png",
@@ -415,8 +415,8 @@
       "path": "launcher-mac/Services/GameWindowChecks.cs",
       "source": "DustoreLauncherV-Mac/Services/GameWindowChecks.cs",
       "platform": "mac",
-      "bytes": 37407,
-      "sha256": "8d85ea59d4d9f2ac82b44b67ae0509a9b1e2978e0915b31da9d2e3d87c32e6a0"
+      "bytes": 39867,
+      "sha256": "971603d57ece89dde222a7ee9057c890c889e84b59843aedb09919925fe1fd08"
     },
     {
       "path": "launcher-mac/Services/LauncherServices.cs",
@@ -520,8 +520,8 @@
       "path": "launcher-mac/Services/WebKitDownloads.cs",
       "source": "DustoreLauncherV-Mac/Services/WebKitDownloads.cs",
       "platform": "mac",
-      "bytes": 11996,
-      "sha256": "dd60988c06363255c15f7a6c2b470e45ef923d21736e39f25c4c62dc39510e5a"
+      "bytes": 12108,
+      "sha256": "1a2f701bf6487cf4ab33daeecfabecde859448f2d22bbcc41ec6bb39976fe05e"
     },
     {
       "path": "launcher-mac/Services/WineGameSession.cs",
@@ -611,15 +611,15 @@
       "path": "launcher-mac/packaging/tests/test_packaging.py",
       "source": "DustoreLauncherV-Mac/packaging/tests/test_packaging.py",
       "platform": "mac",
-      "bytes": 10291,
-      "sha256": "e5f7202180c21e515fad0a341e6a5a550fd761870e97b70f7d8de0c607a14d4a"
+      "bytes": 13532,
+      "sha256": "116f9cccb4128521463a12aa371e6ea55c9af4fbe7e08bf3442ca101c0fa0356"
     },
     {
       "path": "launcher-mac/packaging/verify_macos.py",
       "source": "DustoreLauncherV-Mac/packaging/verify_macos.py",
       "platform": "mac",
-      "bytes": 26034,
-      "sha256": "99379879bc86c5b3c732556ed39789c57d0abc155d0ca50218e74c4ae1b9865a"
+      "bytes": 26965,
+      "sha256": "60e8eb6071aad21f9347ca8d280eb0641704312cade404106614ac3815d253a9"
     },
     {
       "path": "launcher-mac/tests/CatalogProbe/CatalogProbe.csproj",

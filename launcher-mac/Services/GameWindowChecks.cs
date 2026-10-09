@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Text.Json;
@@ -17,8 +18,10 @@ namespace DustoreLauncherV.Mac.Services;
 /// <summary>Own fixtures only: real native window/quit checks are separated from engine argument contracts.</summary>
 internal static class GameWindowChecks
 {
+    internal static string? DownloadFixtureZip { get; private set; }
     internal static async Task<object> RunAsync(MainWindow launcher, string reportDirectory)
     {
+        DownloadFixtureZip = null;
         var checks = new List<string>();
         var entry = new GameEntry(Guid.NewGuid(), "Проверка игры · 5000×3000", reportDirectory, DateTimeOffset.UtcNow);
         int stops = 0, returns = 0;
@@ -85,6 +88,7 @@ internal static class GameWindowChecks
         return window.GetVisualAt(bounds.Center) is { } hit && (hit == button || hit.FindAncestorOfType<Button>() == button);
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
     private static async Task<object> VerifyNativeAsync(MainWindow launcher, string reportDirectory, Action<bool, string> check)
     {
         string root = Path.Combine(reportDirectory, "owned-native-window-" + Guid.NewGuid().ToString("N"));
@@ -224,14 +228,16 @@ internal static class GameWindowChecks
                 using var cancelledReport = JsonDocument.Parse(await File.ReadAllTextAsync(fixtureReport));
                 int cancelledPid = cancelledReport.RootElement.GetProperty("processId").GetInt32();
                 var cancelledSession = NativeAppSessions.Find(game.Id)!;
-                check(cancelAfterOpen.IsCancellationRequested && cancelledBeforeAttach && cancellingPlatform.OpenCompleted
+                bool exactOwnedIdentity = cancelAfterOpen.IsCancellationRequested && cancelledBeforeAttach && cancellingPlatform.OpenCompleted
                     && cancelledSession.ProcessId == cancelledPid && cancelledPid != unrelated.Id && cancelledPid != Environment.ProcessId
                     && cancelledSession.Bundle == Path.GetFullPath(app) && ProcessStillExists(cancelledPid)
                     && double.IsFinite(cancelledSession.LaunchStamp) && cancelledSession.LaunchStamp > 0
-                    && !NativeAppSessions.Snapshot().Any(s => s.ProcessId == unrelated.Id),
+                    && !NativeAppSessions.Snapshot().Any(s => s.ProcessId == unrelated.Id);
+                check(exactOwnedIdentity,
                     "cancellation after successful real open and before attach retains the exact owned native PID and Exit controller");
                 var durable = (await new LauncherServices(profile).LoadLibraryAsync()).Single(e => e.Id == game.Id);
-                check(durable.LastPlayedUtc >= launchStarted && durable.LastPlayedUtc > game.LastPlayedUtc,
+                bool durableHistoryRecorded = durable.LastPlayedUtc >= launchStarted && durable.LastPlayedUtc > game.LastPlayedUtc;
+                check(durableHistoryRecorded,
                     "successful native launch records new durable history despite cancellation after open");
                 var cancelledPanel = launcher.GameControls.Find(game.Id)!;
                 cancelledPanel.PerformExit();
@@ -242,6 +248,7 @@ internal static class GameWindowChecks
                     "Exit actually retires the cancelled-after-open game's PID while the unrelated owned PID stays alive");
                 observations.Add(new { mode = "cancelled-after-open", processId = cancelledPid, unrelatedProcessId = unrelated.Id,
                     cancellingPlatform.OpenCompleted, cancelledBeforeAttach, nativeLaunchStamp = cancelledSession.LaunchStamp,
+                    exactOwnedIdentity, durableHistoryRecorded,
                     ownedGameExited = cancelledGameExited, unrelatedHelperStillRunning = !unrelated.HasExited });
                 await File.WriteAllTextAsync(Path.Combine(reportDirectory, "game-window-native-snapshots.json"),
                     JsonSerializer.Serialize(new { observations }, new JsonSerializerOptions { WriteIndented = true }));
@@ -264,7 +271,29 @@ internal static class GameWindowChecks
             if (NativeAppSessions.Find(game.Id) is { } session) await session.StopAsync(true, CancellationToken.None);
             launcher.WindowState = previousState;
         }
-        return new { status = "Pass", nativeOwnedFixtureExecuted = true, observations, fixtureSource = swift,
+        // Reuse only the owned native executable in a separate simple, signed download app.
+        // The argument-contract PCK belongs to the window test and is not a real Godot game.
+        string downloadApp = Path.Combine(root, "DUSTORE Download Fixture.app");
+        string downloadContents = Path.Combine(downloadApp, "Contents");
+        string downloadBinary = Path.Combine(downloadContents, "MacOS", "OwnedGame");
+        Directory.CreateDirectory(Path.GetDirectoryName(downloadBinary)!);
+        Directory.CreateDirectory(Path.Combine(downloadContents, "Resources"));
+        File.Copy(executable, downloadBinary);
+        File.SetUnixFileMode(downloadBinary, File.GetUnixFileMode(executable));
+        File.Copy(Path.Combine(resources, "report-path.txt"), Path.Combine(downloadContents, "Resources", "report-path.txt"));
+        await File.WriteAllTextAsync(Path.Combine(downloadContents, "Info.plist"), "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>"
+            + "<key>CFBundleExecutable</key><string>OwnedGame</string><key>CFBundleName</key><string>DUSTORE Download Fixture</string>"
+            + "<key>CFBundleIdentifier</key><string>local.dustore.owned-download." + Guid.NewGuid().ToString("N") + "</string>"
+            + "<key>CFBundlePackageType</key><string>APPL</string><key>NSHighResolutionCapable</key><true/></dict></plist>");
+        foreach (string[] arguments in new[] { new[] { "--force", "--sign", "-", downloadApp }, new[] { "--verify", "--deep", "--strict", downloadApp } })
+        {
+            var signed = await WineRuntime.RunAsync("/usr/bin/codesign", arguments, null, TimeSpan.FromSeconds(30), CancellationToken.None);
+            if (signed.Code != 0) throw new IOException("Owned download fixture signature failed: " + signed.Output);
+        }
+        string downloadZip = Path.Combine(root, "owned-download-fixture.zip");
+        ZipFile.CreateFromDirectory(downloadApp, downloadZip, CompressionLevel.Fastest, includeBaseDirectory: true);
+        DownloadFixtureZip = downloadZip;
+        return new { status = "Pass", nativeOwnedFixtureExecuted = true, observations, fixtureSource = swift, downloadFixtureZip = downloadZip,
             actualThirdPartyGameExecuted = false, thirdPartyIgnoredWindowArgumentsClamped = false,
             scope = "AppKit native fixture accepting Godot's documented window arguments; actual LaunchServices/PID stop and separate launcher controller." };
     }

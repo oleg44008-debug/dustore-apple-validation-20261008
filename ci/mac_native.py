@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -75,8 +76,18 @@ def main() -> int:
             run.details["gameWindowVerification"] = game_windows
             window_proof = (game_windows.get("status") == "Pass" and native_windows.get("status") == "Pass"
                             and native_windows.get("nativeOwnedFixtureExecuted") is True
-                            and {item.get("mode") for item in observations} == {"windowed", "fullscreen"})
+                            and len(observations) == 3
+                            and {item.get("mode") for item in observations} == {"windowed", "fullscreen", "cancelled-after-open"})
             run.check("actual native high-framebuffer compact/fullscreen game and Exit", window_proof, game_windows)
+            cancelled = next((item for item in observations if item.get("mode") == "cancelled-after-open"), {})
+            pid, other_pid = cancelled.get("processId"), cancelled.get("unrelatedProcessId")
+            stamp = cancelled.get("nativeLaunchStamp")
+            cancellation_proof = (window_proof
+                                  and all(cancelled.get(key) is True for key in ["OpenCompleted", "cancelledBeforeAttach",
+                                      "exactOwnedIdentity", "durableHistoryRecorded", "ownedGameExited", "unrelatedHelperStillRunning"])
+                                  and type(pid) is int and pid > 0 and type(other_pid) is int and other_pid > 0 and pid != other_pid
+                                  and type(stamp) in {int, float} and math.isfinite(stamp) and stamp > 0)
+            run.check("native cancellation after open tracks/history/stops only the exact owned PID", cancellation_proof, cancelled)
             native_images = [offline / name for name in ["game-window-native-compact.png",
                               "game-window-native-fullscreen.png", "game-controls-native.png"]]
             run.check("native game/Exit actual screenshot evidence", all(path.is_file() and path.stat().st_size > 0 for path in native_images),
