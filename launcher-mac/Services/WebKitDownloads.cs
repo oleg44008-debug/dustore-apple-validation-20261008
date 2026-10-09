@@ -17,7 +17,7 @@ internal static unsafe partial class WebKitBridge
 
     private static IntPtr _download;
     private static int _downloadId;
-    private static string _downloadName = "", _downloadPath = "", _downloadError = "", _pendingTitle = "";
+    private static string _downloadName = "", _downloadPath = "", _downloadError = "", _pendingTitle = "", _downloadTitle = "";
     private static string _pendingPage = "", _downloadPage = "";
     private static DownloadStatus _downloadStatus = DownloadStatus.None;
 
@@ -26,6 +26,7 @@ internal static unsafe partial class WebKitBridge
     /// <summary>On macOS older than 11.3 (no WKDownload) the file URL is handed to the system browser.</summary>
     public static string? FallbackDownloadUrl { get; private set; }
     public static bool SupportsDownloads => OperatingSystem.IsMacOS() && Class("WKDownload") != IntPtr.Zero;
+    internal static int SupersededDownloadCallbackCount { get; private set; }
 
     public static DownloadSnapshot? CurrentDownload
     {
@@ -114,13 +115,23 @@ internal static unsafe partial class WebKitBridge
     {
         try
         {
-            if (_download != IntPtr.Zero) Send(_download, Sel("release"));
+            if (_download == download) return;
+            IntPtr previous = _download;
+            bool cancelPrevious = _downloadStatus == DownloadStatus.Running;
             _download = Send(download, Sel("retain"));
             SendVoid(download, Sel("setDelegate:"), self);
             _downloadId++;
             _downloadStatus = DownloadStatus.Running;
             _downloadName = _downloadPath = _downloadError = "";
+            _downloadTitle = _pendingTitle;
             _downloadPage = _pendingPage;
+            if (previous != IntPtr.Zero)
+            {
+                // The UI owns one active download. Publish the replacement identity first:
+                // cancel may deliver the previous download's terminal callback immediately.
+                if (cancelPrevious) SendVoid(previous, Sel("cancel:"), IntPtr.Zero);
+                Send(previous, Sel("release"));
+            }
         }
         catch { }
     }
@@ -128,6 +139,7 @@ internal static unsafe partial class WebKitBridge
     [UnmanagedCallersOnly]
     private static void DecideDestination(IntPtr self, IntPtr selector, IntPtr download, IntPtr response, IntPtr suggestedFilename, IntPtr completion)
     {
+        if (!IsCurrentDownload(download)) { InvokeBlock(completion, IntPtr.Zero); return; }
         IntPtr destination = IntPtr.Zero;
         try
         {
@@ -135,7 +147,7 @@ internal static unsafe partial class WebKitBridge
             {
                 Directory.CreateDirectory(directory);
                 string suggested = ManagedString(suggestedFilename) ?? "game.zip";
-                _downloadName = GameNameFromTitle(_pendingTitle) ?? Path.GetFileNameWithoutExtension(suggested);
+                _downloadName = GameNameFromTitle(_downloadTitle) ?? Path.GetFileNameWithoutExtension(suggested);
                 string extension = Path.GetExtension(suggested);
                 string path = UniquePath(directory, SafeFileName(_downloadName) + extension);
                 _downloadPath = path;
@@ -153,11 +165,13 @@ internal static unsafe partial class WebKitBridge
     }
 
     [UnmanagedCallersOnly]
-    private static void DownloadFinished(IntPtr self, IntPtr selector, IntPtr download) => _downloadStatus = DownloadStatus.Finished;
+    private static void DownloadFinished(IntPtr self, IntPtr selector, IntPtr download)
+    { if (IsCurrentDownload(download)) _downloadStatus = DownloadStatus.Finished; }
 
     [UnmanagedCallersOnly]
     private static void DownloadFailed(IntPtr self, IntPtr selector, IntPtr download, IntPtr error, IntPtr resumeData)
     {
+        if (!IsCurrentDownload(download)) return;
         try
         {
             nint code = SendNint(error, Sel("code"));
@@ -165,6 +179,13 @@ internal static unsafe partial class WebKitBridge
             _downloadError = ManagedString(Send(error, Sel("localizedDescription"))) ?? "";
         }
         catch { _downloadStatus = DownloadStatus.Failed; }
+    }
+
+    private static bool IsCurrentDownload(IntPtr download)
+    {
+        if (download != IntPtr.Zero && download == _download) return true;
+        SupersededDownloadCallbackCount++;
+        return false;
     }
 
     internal static string? GameNameFromTitle(string title)

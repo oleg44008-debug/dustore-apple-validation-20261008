@@ -225,6 +225,11 @@ final class Library: ObservableObject {
     }
     func importDownloaded(from source: URL, title: String?, id: UUID) async {
         guard transfer?.id == id else { return }
+        // Download completion queues this handoff. Honour cancellation that arrives before it runs.
+        guard transfer?.outcome == .running else {
+            if transfer?.outcome == .cancelling { downloadFailed(id: id, error: nil, retry: nil) }
+            return
+        }
         transfer = nil; downloadCancel = nil; downloadRetry = nil
         await add(from: source, title: title, deleteSourceOnSuccess: true)
     }

@@ -272,13 +272,111 @@ public partial class App : Application
             throw new InvalidOperationException("A store download kept the quarantine marker, so the game would stop at Gatekeeper.");
         if (!other.downloadQuarantined)
             throw new InvalidOperationException("A download from another site lost its quarantine marker.");
+        object overlap = await VerifyOverlappingDownloadsAsync(window, web, gameZip);
         return new
         {
             addedToLibrary = true, readyToLaunch = true, libraryBefore = before, libraryAfter = window.ViewModel.Games.Count,
             name = store.name, file = store.file, bytes = store.bytes, pageAfterDownload = store.page,
             downloadQuarantined = store.downloadQuarantined, preparedAppQuarantined = store.preparedAppQuarantined,
-            otherSiteDownloadQuarantined = other.downloadQuarantined, otherSitePreparedAppQuarantined = other.preparedAppQuarantined
+            otherSiteDownloadQuarantined = other.downloadQuarantined, otherSitePreparedAppQuarantined = other.preparedAppQuarantined,
+            overlappingDownloads = overlap
         };
+    }
+
+    private static async Task<object> VerifyOverlappingDownloadsAsync(MainWindow window, Controls.NativeWebView web, string gameZip)
+    {
+        int port = StartAndStop(System.Net.Sockets.TcpListener.Create(0));
+        string origin = $"http://127.0.0.1:{port}";
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var listener = new System.Net.HttpListener();
+        listener.Prefixes.Add(origin + "/"); listener.Start();
+        _ = Task.Run(async () =>
+        {
+            while (listener.IsListening)
+            {
+                System.Net.HttpListenerContext context;
+                try { context = await listener.GetContextAsync(); } catch { return; }
+                // A stalled response must not prevent the second real WebKit request.
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        string path = context.Request.Url?.AbsolutePath ?? "/";
+                        bool first = path.Contains("first", StringComparison.Ordinal);
+                        if (path.EndsWith(".zip", StringComparison.Ordinal))
+                        {
+                            context.Response.ContentType = "application/zip";
+                            await using var file = File.OpenRead(gameZip);
+                            context.Response.ContentLength64 = file.Length;
+                            byte[] head = new byte[(int)Math.Max(1, Math.Min(4096, file.Length / 2))];
+                            await file.ReadExactlyAsync(head);
+                            await context.Response.OutputStream.WriteAsync(head);
+                            await context.Response.OutputStream.FlushAsync();
+                            await (first ? releaseFirst.Task : releaseSecond.Task).WaitAsync(TimeSpan.FromSeconds(30));
+                            await file.CopyToAsync(context.Response.OutputStream);
+                        }
+                        else
+                        {
+                            string name = first ? "first" : "second";
+                            byte[] html = System.Text.Encoding.UTF8.GetBytes("<!doctype html><html><head><meta charset=\"utf-8\"><title>Dustore — overlap " + name
+                                + "</title><meta http-equiv=\"refresh\" content=\"1;url=/" + name + ".zip\"></head><body>Скачать</body></html>");
+                            context.Response.ContentType = "text/html; charset=utf-8";
+                            await context.Response.OutputStream.WriteAsync(html);
+                        }
+                    }
+                    catch { }
+                    finally { try { context.Response.Close(); } catch { } }
+                });
+            }
+        });
+        string trustedHost = "127.0.0.1:" + port;
+        ViewModels.MainViewModel.TrustedStoreHosts.Add(trustedHost);
+        int ignoredBefore = Services.WebKitBridge.SupersededDownloadCallbackCount;
+        int libraryBefore = window.ViewModel.Games.Count;
+        try
+        {
+            int priorId = Services.WebKitBridge.CurrentDownload?.Id ?? 0;
+            web.Navigate(origin + "/first");
+            await UntilAsync(() => Services.WebKitBridge.CurrentDownload is { Status: Services.DownloadStatus.Running, Name: "overlap first" } first
+                && first.Id > priorId && first.Path.Length > 0, "the first held native download");
+            var first = Services.WebKitBridge.CurrentDownload!;
+            web.Navigate(origin + "/second");
+            await UntilAsync(() => Services.WebKitBridge.CurrentDownload is { Status: Services.DownloadStatus.Running, Name: "overlap second" } second
+                && second.Id > first.Id && second.Path.Length > 0, "the replacement held native download");
+            var second = Services.WebKitBridge.CurrentDownload!;
+            releaseFirst.TrySetResult();
+            await UntilAsync(() => Services.WebKitBridge.SupersededDownloadCallbackCount > ignoredBefore,
+                "an actual terminal callback from the superseded WKDownload");
+            await Task.Delay(500); // Let the ordinary UI download poll observe any corrupted status.
+            if (Services.WebKitBridge.CurrentDownload is not { Status: Services.DownloadStatus.Running } running
+                || running.Id != second.Id || running.Name != second.Name || running.Path != second.Path
+                || window.ViewModel.Games.Count != libraryBefore || window.ViewModel.DownloadedGameId is not null)
+                throw new InvalidOperationException("A superseded WKDownload changed or imported the still-incomplete replacement.");
+            releaseSecond.TrySetResult();
+            await UntilAsync(() => window.ViewModel.LastDownload?.Id == second.Id && window.ViewModel.DownloadReady,
+                "the complete replacement's ordinary library import", TimeSpan.FromSeconds(90));
+            await using var expectedFile = File.OpenRead(gameZip);
+            await using var actualFile = File.OpenRead(second.Path);
+            if (!(await System.Security.Cryptography.SHA256.HashDataAsync(expectedFile)).SequenceEqual(
+                    await System.Security.Cryptography.SHA256.HashDataAsync(actualFile))
+                || window.ViewModel.Games.Count != libraryBefore + 1)
+                throw new InvalidOperationException("The replacement download was imported before its complete original bytes arrived.");
+            return new { status = "Pass", supersededDownloadCallbacks = Services.WebKitBridge.SupersededDownloadCallbackCount - ignoredBefore,
+                incompleteReplacementImported = false, completeReplacementImported = true, exactFileBytesPreserved = true };
+        }
+        finally
+        {
+            releaseFirst.TrySetResult(); releaseSecond.TrySetResult(); listener.Stop();
+            ViewModels.MainViewModel.TrustedStoreHosts.Remove(trustedHost);
+        }
+
+        static async Task UntilAsync(Func<bool> predicate, string description, TimeSpan? timeout = null)
+        {
+            var started = DateTime.UtcNow;
+            while (!predicate() && DateTime.UtcNow - started < (timeout ?? TimeSpan.FromSeconds(15))) await Task.Delay(100);
+            if (!predicate()) throw new TimeoutException("WebKit overlap check timed out: " + description);
+        }
     }
 
     private static async Task<(string name, string file, long bytes, string page, bool downloadQuarantined, bool preparedAppQuarantined)>

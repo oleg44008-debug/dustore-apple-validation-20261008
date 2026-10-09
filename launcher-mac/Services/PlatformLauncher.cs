@@ -10,14 +10,14 @@ public interface IPlatformLauncher
     Task OpenUrlAsync(string url, CancellationToken cancellation = default);
 }
 
-public sealed class PlatformLauncher : IPlatformLauncher
+public class PlatformLauncher : IPlatformLauncher
 {
     /// <summary>Environment entry that is not exported: it names the file for the game's stdout and stderr.</summary>
     public const string GameLogKey = "__DUSTORE_GAME_LOG";
 
     public bool IsMacOS => OperatingSystem.IsMacOS();
 
-    public Task OpenAppAsync(string appPath, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> environment, CancellationToken cancellation = default)
+    public virtual Task OpenAppAsync(string appPath, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> environment, CancellationToken cancellation = default)
     {
         if (!IsMacOS) throw new PlatformNotSupportedException("Запуск .app доступен на macOS.");
         var open = new List<string> { "-a", appPath };

@@ -159,7 +159,9 @@ final class ZipArchive {
         var total = Int(tail.u16(end + 10))
         if directoryOffset == 0xFFFF_FFFF || directorySize == 0xFFFF_FFFF || total == 0xFFFF,
            let end64 = tail.lastRange(of: [0x50, 0x4b, 0x06, 0x06]), end64 + 56 <= tail.count {
-            total = Int(tail.u64(end64 + 32))
+            let total64 = tail.u64(end64 + 32)
+            guard total64 <= 100_000 else { throw ZipError.truncated }
+            total = Int(total64)
             directorySize = tail.u64(end64 + 40)
             directoryOffset = tail.u64(end64 + 48)
         }

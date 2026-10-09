@@ -202,6 +202,61 @@ internal static class GameWindowChecks
             panel.PerformExit();
             await UntilAsync(() => NativeAppSessions.Find(game.Id) is null, "native fullscreen game exit");
             check(!ProcessStillExists(fullValues.GetProperty("processId").GetInt32()), "explicit fullscreen own game can actually exit through the persistent game controller");
+
+            File.Delete(fixtureReport);
+            game = await service.SetWindowOptionsAsync(game.Id, GameLaunchOptions.Windowed, 640, 360);
+            using var cancelAfterOpen = new CancellationTokenSource();
+            bool cancelledBeforeAttach = false, cancelledGameExited = false;
+            var cancellingPlatform = new CancelAfterNativeOpenPlatform(() =>
+            {
+                cancelledBeforeAttach = NativeAppSessions.Find(game.Id) is null;
+                cancelAfterOpen.Cancel();
+            });
+            using var unrelated = Process.Start(new ProcessStartInfo("/bin/sleep") { UseShellExecute = false, ArgumentList = { "60" } })
+                ?? throw new IOException("Could not start the unrelated owned helper.");
+            try
+            {
+                var cancellingService = new LauncherServices(profile, cancellingPlatform);
+                DateTimeOffset launchStarted = DateTimeOffset.UtcNow;
+                await cancellingService.LaunchAsync(game, cancelAfterOpen.Token);
+                await UntilAsync(() => NativeAppSessions.Find(game.Id) is not null
+                    && launcher.GameControls.Find(game.Id) is { IsVisible: true } && File.Exists(fixtureReport), "cancelled-after-open native session attach");
+                using var cancelledReport = JsonDocument.Parse(await File.ReadAllTextAsync(fixtureReport));
+                int cancelledPid = cancelledReport.RootElement.GetProperty("processId").GetInt32();
+                var cancelledSession = NativeAppSessions.Find(game.Id)!;
+                check(cancelAfterOpen.IsCancellationRequested && cancelledBeforeAttach && cancellingPlatform.OpenCompleted
+                    && cancelledSession.ProcessId == cancelledPid && cancelledPid != unrelated.Id && cancelledPid != Environment.ProcessId
+                    && cancelledSession.Bundle == Path.GetFullPath(app) && ProcessStillExists(cancelledPid)
+                    && double.IsFinite(cancelledSession.LaunchStamp) && cancelledSession.LaunchStamp > 0
+                    && !NativeAppSessions.Snapshot().Any(s => s.ProcessId == unrelated.Id),
+                    "cancellation after successful real open and before attach retains the exact owned native PID and Exit controller");
+                var durable = (await new LauncherServices(profile).LoadLibraryAsync()).Single(e => e.Id == game.Id);
+                check(durable.LastPlayedUtc >= launchStarted && durable.LastPlayedUtc > game.LastPlayedUtc,
+                    "successful native launch records new durable history despite cancellation after open");
+                var cancelledPanel = launcher.GameControls.Find(game.Id)!;
+                cancelledPanel.PerformExit();
+                await UntilAsync(() => NativeAppSessions.Find(game.Id) is null && !cancelledPanel.IsVisible,
+                    "cancelled-after-open exact native game exit");
+                cancelledGameExited = !ProcessStillExists(cancelledPid);
+                check(cancelledGameExited && !unrelated.HasExited,
+                    "Exit actually retires the cancelled-after-open game's PID while the unrelated owned PID stays alive");
+                observations.Add(new { mode = "cancelled-after-open", processId = cancelledPid, unrelatedProcessId = unrelated.Id,
+                    cancellingPlatform.OpenCompleted, cancelledBeforeAttach, nativeLaunchStamp = cancelledSession.LaunchStamp,
+                    ownedGameExited = cancelledGameExited, unrelatedHelperStillRunning = !unrelated.HasExited });
+                await File.WriteAllTextAsync(Path.Combine(reportDirectory, "game-window-native-snapshots.json"),
+                    JsonSerializer.Serialize(new { observations }, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            finally
+            {
+                // A failing regression must also retire its own bundle, including on unfixed code.
+                if (!cancelledGameExited)
+                {
+                    if (NativeAppSessions.Find(game.Id) is null) await NativeAppSessions.ObserveAsync(game, app, CancellationToken.None);
+                    if (NativeAppSessions.Find(game.Id) is { } cancelledSession) await cancelledSession.StopAsync(true, CancellationToken.None);
+                }
+                if (!unrelated.HasExited) unrelated.Kill(entireProcessTree: false);
+                await unrelated.WaitForExitAsync();
+            }
         }
         finally
         {
@@ -212,6 +267,18 @@ internal static class GameWindowChecks
         return new { status = "Pass", nativeOwnedFixtureExecuted = true, observations, fixtureSource = swift,
             actualThirdPartyGameExecuted = false, thirdPartyIgnoredWindowArgumentsClamped = false,
             scope = "AppKit native fixture accepting Godot's documented window arguments; actual LaunchServices/PID stop and separate launcher controller." };
+    }
+
+    private sealed class CancelAfterNativeOpenPlatform(Action afterOpen) : PlatformLauncher
+    {
+        internal bool OpenCompleted { get; private set; }
+        public override async Task OpenAppAsync(string appPath, IReadOnlyList<string> arguments,
+            IReadOnlyDictionary<string, string> environment, CancellationToken cancellation = default)
+        {
+            await base.OpenAppAsync(appPath, arguments, environment, cancellation);
+            OpenCompleted = true;
+            afterOpen();
+        }
     }
 
     private static async Task VerifyMainCloseReturnAsync(MainWindow launcher, GameEntry game,

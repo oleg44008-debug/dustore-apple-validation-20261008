@@ -86,8 +86,16 @@ enum Porter {
             succeeded = true
             return game
         }
-        if let page = files.first(where: { $0.lastPathComponent.lowercased() == "index.html" }),
-           (try? fm.contentsOfDirectory(atPath: page.deletingLastPathComponent().path))?.contains(where: { $0.hasSuffix(".js") || $0.hasSuffix(".wasm") || $0.hasSuffix(".pck") }) == true {
+        // HTML can embed its script or keep assets in subfolders; index.html is the web entry.
+        let webEntry = files.first(where: { $0.lastPathComponent == "index.html" })
+            ?? files.first(where: { $0.lastPathComponent.lowercased() == "index.html" })
+        if let page = webEntry {
+            if page.lastPathComponent != "index.html" {
+                // A two-step rename also works on case-insensitive simulator file systems.
+                let temporary = page.deletingLastPathComponent().appendingPathComponent(".dustore-entry-" + UUID().uuidString)
+                try fm.moveItem(at: page, to: temporary)
+                try fm.moveItem(at: temporary, to: page.deletingLastPathComponent().appendingPathComponent("index.html"))
+            }
             try fm.moveItem(at: page.deletingLastPathComponent(), to: game.webRoot)
             try? fm.removeItem(at: src)
             game.kind = .web; game.engine = "Веб-игра"
@@ -173,7 +181,7 @@ enum Porter {
               let tail = try? h.read(upToCount: 12), tail.count == 12, tail[8] == 0x47, tail[9] == 0x44, tail[10] == 0x50, tail[11] == 0x43 else { return nil }
         var size: UInt64 = 0
         for i in (0..<8).reversed() { size = size << 8 | UInt64(tail[i]) }
-        guard size > 0, size < length else { return nil }
+        guard size > 0, size <= length - 12 else { return nil }
         return version(at: length - 12 - size)
     }
 

@@ -179,14 +179,14 @@ def main() -> int:
             packages = run.artifact / "packages"
             packages.mkdir(exist_ok=True)
             run.run("simulator-package", ["ditto", "-c", "-k", "--keepParent", str(simulator_app),
-                    str(packages / f"DustoreX-{args.edition}-1.2.0-iOS18.5-SIMULATOR.app.zip")], 120)
+                    str(packages / f"DustoreX-{args.edition}-1.2.1-iOS18.5-SIMULATOR.app.zip")], 120)
         device_app = validation / ("Device-" + args.edition + "Release") / "Build/Products" / (args.edition + "Release-iphoneos") / "DustoreX.app"
         if device_app.is_dir():
             metadata = plistlib.loads((device_app / "Info.plist").read_bytes())
             run.details["unsignedDeviceApp"] = {"version": metadata.get("CFBundleShortVersionString"), "build": metadata.get("CFBundleVersion"),
                     "platforms": metadata.get("CFBundleSupportedPlatforms"), "bundleIdentifier": metadata.get("CFBundleIdentifier"),
                     "signedForPhysicalDevice": False, "physicallyInstalled": False}
-            run.check("device package version/build/platform", metadata.get("CFBundleShortVersionString") == "1.2.0" and metadata.get("CFBundleVersion") == "3" and metadata.get("CFBundleSupportedPlatforms") == ["iPhoneOS"])
+            run.check("device package version/build/platform", metadata.get("CFBundleShortVersionString") == "1.2.1" and metadata.get("CFBundleVersion") == "4" and metadata.get("CFBundleSupportedPlatforms") == ["iPhoneOS"])
             run.check("no provisioning profile included", not (device_app / "embedded.mobileprovision").exists())
         package_dir = validation / "Packages" / args.edition
         if package_dir.is_dir():

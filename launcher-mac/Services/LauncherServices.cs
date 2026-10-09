@@ -259,11 +259,13 @@ public sealed class LauncherServices
             {
                 await _platform.OpenAppAsync(app, arguments, environment, cancellation).ConfigureAwait(false);
                 if (_platform is PlatformLauncher && !wine)
-                    await NativeAppSessions.ObserveAsync(entry, app, cancellation).ConfigureAwait(false);
+                    // open has accepted the launch. Cancellation must not orphan its live app.
+                    await NativeAppSessions.ObserveAsync(entry, app, CancellationToken.None).ConfigureAwait(false);
                 UltraMode.WriteDiagnostics(DataDirectory, entry, wine ? "DXVK / compatible Wine" : "native", arguments, environment);
             }
         }
-        await UpdateEntryAsync(entry.Id, e => e with { LastPlayedUtc = DateTimeOffset.UtcNow }, cancellation).ConfigureAwait(false);
+        // The game is already started and tracked; finish its history after that cut-off.
+        await UpdateEntryAsync(entry.Id, e => e with { LastPlayedUtc = DateTimeOffset.UtcNow }, CancellationToken.None).ConfigureAwait(false);
     }
 
     public Task<GameEntry> SetPrimeOptionsAsync(Guid id, string graphics, bool metalFx, int? fpsLimit, bool showFps, CancellationToken cancellation = default)
