@@ -114,13 +114,19 @@ final class DustoreUITests: XCTestCase {
         return Navigation(surface: .systemTabBar, parentFrame: parent, buttons: buttons)
     }
     private func iPadTopGroup(_ parent: XCUIElement, window: CGRect) throws -> Navigation {
-        // The recorded native iPadOS18 hierarchy uses Other -> four direct Button
-        // cells. A cell may expose one same-frame Button child. Never choose an
-        // arbitrary app button by title or a private UIKit class.
-        let cells = parent.children(matching: .button).allElementsBoundByIndex
-        guard parent.exists, parent.elementType == .other,
-              cells.count == Destination.allCases.count, contains(window, parent.frame),
-              parent.frame.maxY <= window.minY + window.height * 0.25 else {
+        // Inspect the actual native Other -> four Button cells in one coherent snapshot.
+        // A cell may contain one same-frame Button leaf. Interaction remains a fresh,
+        // unique identity-and-label query inside this exact native parent.
+        let cellQuery = parent.children(matching: .button)
+        guard cellQuery.count == Destination.allCases.count else {
+            throw NavigationIssue("Not the four-cell native iPad header")
+        }
+        let snapshot = try parent.snapshot()
+        let cells = snapshot.children.filter { $0.elementType == .button }
+        let parentFrame = snapshot.frame
+        guard parent.exists, snapshot.elementType == .other,
+              cells.count == Destination.allCases.count, contains(window, parentFrame),
+              parentFrame.maxY <= window.minY + window.height * 0.25 else {
             throw NavigationIssue("Not the four-cell native iPad header")
         }
         var buttons: [Destination: XCUIElement] = [:]
@@ -131,23 +137,45 @@ final class DustoreUITests: XCTestCase {
                 throw NavigationIssue("Native iPad top-tab identity is missing or ambiguous: \(destination.rawValue)")
             }
             let cell = matches[0]
-            let nested = cell.children(matching: .button).allElementsBoundByIndex
+            let nested = cell.children.filter { $0.elementType == .button }
             guard nested.count <= 1 else {
                 throw NavigationIssue("Unsupported nested native top-tab shape: \(destination.rawValue)")
             }
-            let button = nested.isEmpty ? cell : nested[0]
-            guard button.children(matching: .button).count == 0,
-                  button.identifier == destination.symbol, button.label == destination.rawValue,
-                  coincides(cell.frame, button.frame) else {
+            let leaf = nested.isEmpty ? cell : nested[0]
+            let cellFrame = cell.frame
+            let frame = leaf.frame
+            guard leaf.children.filter({ $0.elementType == .button }).isEmpty,
+                  leaf.elementType == .button,
+                  leaf.identifier == destination.symbol, leaf.label == destination.rawValue,
+                  coincides(cellFrame, frame) else {
                 throw NavigationIssue("Top-tab nested Button must retain the cell identity and bounds")
             }
-            try validate(button, destination: destination, identifier: destination.symbol,
-                         parent: parent.frame, window: window)
+            guard contains(parentFrame, frame), contains(window, frame) else {
+                throw NavigationIssue("Navigation destination is not fully onscreen: \(destination.rawValue), \(frame)")
+            }
+            let identity = NSPredicate(format: "identifier == %@ AND label == %@", destination.symbol, destination.rawValue)
+            let liveCells = cellQuery.matching(identity)
+            guard liveCells.count == 1 else {
+                throw NavigationIssue("Native iPad top-tab target is missing or ambiguous: \(destination.rawValue)")
+            }
+            let button: XCUIElement
+            if nested.isEmpty {
+                button = liveCells.element
+            } else {
+                let liveLeaves = liveCells.element.children(matching: .button).matching(identity)
+                guard liveLeaves.count == 1 else {
+                    throw NavigationIssue("Native iPad nested target is missing or ambiguous: \(destination.rawValue)")
+                }
+                button = liveLeaves.element
+            }
+            guard button.exists, button.isHittable else {
+                throw NavigationIssue("Navigation destination is not immediately hittable: \(destination.rawValue), \(frame)")
+            }
             buttons[destination] = button
-            cellFrames.append(cell.frame)
+            cellFrames.append(cellFrame)
         }
         guard let first = cellFrames.first, let last = cellFrames.last,
-              parent.frame.height <= cellFrames.map(\.height).max()! * 2.4 else {
+              parentFrame.height <= cellFrames.map(\.height).max()! * 2.4 else {
             throw NavigationIssue("Native top-tab group is not a compact horizontal header")
         }
         for (index, frame) in cellFrames.enumerated() {
@@ -159,7 +187,7 @@ final class DustoreUITests: XCTestCase {
             }
         }
         guard last.maxX > first.minX else { throw NavigationIssue("Invalid native top-tab row") }
-        return Navigation(surface: .iPadSystemTopTabs, parentFrame: parent.frame, buttons: buttons)
+        return Navigation(surface: .iPadSystemTopTabs, parentFrame: parentFrame, buttons: buttons)
     }
     private func resolveNavigation(in app: XCUIApplication, requireNative: Bool) throws -> Navigation {
         let window = try exactWindow(in: app)

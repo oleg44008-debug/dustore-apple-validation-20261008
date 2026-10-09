@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "root-reviewed-accessible-ex-import-v5-independent-tablet-20261009",
-      "snapshottedAtUtc": "2026-10-09T19:15:21.905490+00:00"
+      "milestone": "root-reviewed-ipad-coherent-nav-with-candidate-guard-v6b-20261009",
+      "snapshottedAtUtc": "2026-10-09T19:54:49.014215+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -219,8 +219,8 @@
       "path": "ios/UITests/DustoreUITests.swift",
       "source": "DustoreIOS/UITests/DustoreUITests.swift",
       "platform": "ios",
-      "bytes": 22767,
-      "sha256": "349536642f666c7f9e044ad7d419bfed1a40fabfb4fc6cb1838e19834eb8f70f"
+      "bytes": 24288,
+      "sha256": "5468c0d4c9bf5be1981027969c0d0b3143cfc6b4f73a06236b82f929416305e4"
     },
     {
       "path": "ios/VALIDATION.md",
