@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Text.Json;
 using Avalonia;
@@ -113,6 +114,7 @@ internal static class GameWindowChecks
                 "actual native game buttons expose localized accessibility labels and identify the exact game");
             check(panel.NativeMovable && CornersUncovered(values, panel.NativeScreenFrame),
                 "native title bar is movable and initial placement leaves all four game corner texts uncovered");
+            await VerifyMainCloseReturnAsync(launcher, game, session, panel, "windowed", check);
             launcher.WindowState = WindowState.Minimized; await Task.Delay(250);
             check(NativeGameControlPanel.IsMiniaturized(launcher) && panel.IsVisible && panel.ExitHittable,
                 "actual AppKit launcher miniaturization leaves the unowned NSPanel visible and hittable");
@@ -149,6 +151,7 @@ internal static class GameWindowChecks
                 && panel.NativeVisibility.OcclusionVisible && panel.IsNativePanel && panel.NativeAllSpacesApplied && panel.ExitHittable,
                 "actual native fullscreen Space retains an onscreen auxiliary Exit panel with usable control bounds");
             check(CornersUncovered(fullValues, panel.NativeScreenFrame), "fullscreen game corner texts remain uncovered by initial native controller placement");
+            await VerifyMainCloseReturnAsync(launcher, game, NativeAppSessions.Find(game.Id)!, panel, "fullscreen", check);
             panel.PerformExit();
             await UntilAsync(() => NativeAppSessions.Find(game.Id) is null, "native fullscreen game exit");
             check(!ProcessStillExists(fullValues.GetProperty("processId").GetInt32()), "explicit fullscreen own game can actually exit through the persistent game controller");
@@ -163,6 +166,53 @@ internal static class GameWindowChecks
             actualThirdPartyGameExecuted = false, thirdPartyIgnoredWindowArgumentsClamped = false,
             scope = "AppKit native fixture accepting Godot's documented window arguments; actual LaunchServices/PID stop and separate launcher controller." };
     }
+
+    private static async Task VerifyMainCloseReturnAsync(MainWindow launcher, GameEntry game,
+        NativeAppSessions.NativeSession session, GameControlSurface panel, string mode, Action<bool, string> check)
+    {
+        if (launcher.TryGetPlatformHandle() is not { HandleDescriptor: "NSWindow", Handle: var mainHandle } || mainHandle == IntPtr.Zero)
+            throw new InvalidOperationException("Main.Close requires the existing native launcher window.");
+        long mainNumber = NativeGameControlPanel.NativeWindowNumberOf(launcher), panelNumber = panel.NativeWindowNumber;
+        bool closed = false;
+        EventHandler onClosed = (_, _) => closed = true;
+        launcher.Closed += onClosed;
+        try
+        {
+            // Use the existing Return action if launch presentation has already minimized Main.
+            if (!launcher.IsVisible || launcher.WindowState == WindowState.Minimized) panel.PerformReturn();
+            await UntilAsync(() => closed || (launcher.IsVisible && SameMain(true)), mode + " Main.Close visible prerequisite");
+            check(!closed && mainNumber > 0 && panelNumber > 0 && SameMain(true) && ExactGameAndPanel(),
+                mode + " Main.Close starts with the exact live native Main, game session and usable Exit/Return panel");
+            launcher.Close();
+            await UntilAsync(() => closed || (!launcher.IsVisible && SameMain(false)), mode + " Main.Close hides the same native Main");
+            check(!closed && !launcher.IsVisible && SameMain(false),
+                mode + " ordinary Main.Close is cancelled without Closed and hides the same NSWindow handle and windowNumber");
+            check(ExactGameAndPanel(),
+                mode + " hidden Main retains the exact live game session and native controller with onscreen hittable Exit/Return");
+            panel.PerformReturn();
+            await UntilAsync(() => closed || (launcher.IsVisible && launcher.WindowState != WindowState.Minimized && SameMain(true)),
+                mode + " Return restores the same native Main after Close");
+            check(!closed && launcher.IsVisible && launcher.WindowState != WindowState.Minimized && SameMain(true) && ExactGameAndPanel(),
+                mode + " PerformReturn shows the same native Main with the same live session and Exit/Return controller after Close");
+        }
+        finally { launcher.Closed -= onClosed; }
+
+        bool SameMain(bool visible) => !closed
+            && launcher.TryGetPlatformHandle() is { HandleDescriptor: "NSWindow" } current && current.Handle == mainHandle
+            && NativeGameControlPanel.NativeWindowNumberOf(launcher) == mainNumber
+            // Read only the still-current platform handle; never dereference a saved handle after Closed.
+            && (NativeWindowVisible(current.Handle, NativeSelector("isVisible")) != 0) == visible;
+        bool ExactGameAndPanel() => ReferenceEquals(NativeAppSessions.Find(game.Id), session)
+            && session.Entry.Id == game.Id && double.IsFinite(session.LaunchStamp) && session.LaunchStamp > 0 && ProcessStillExists(session.ProcessId)
+            && ReferenceEquals(launcher.GameControls.Find(game.Id), panel) && panel.Entry.Id == game.Id
+            && panel.NativeWindowNumber == panelNumber && panel.IsNativePanel && panel.IsVisible
+            && panel.NativeVisibility.OnActiveSpace && panel.NativeVisibility.OcclusionVisible && panel.ExitHittable && panel.ReturnHittable;
+    }
+
+    [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "sel_registerName")]
+    private static extern IntPtr NativeSelector([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+    [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
+    private static extern byte NativeWindowVisible(IntPtr window, IntPtr selector);
 
     private static object PanelMetrics(GameControlSurface panel)
     {

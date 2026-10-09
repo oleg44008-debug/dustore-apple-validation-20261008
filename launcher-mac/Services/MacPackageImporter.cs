@@ -10,7 +10,11 @@ internal static class MacPackageImporter
     private sealed record Item(ZipArchiveEntry Entry, string Name, bool Directory, bool Symlink, int Mode, string? LinkTarget);
 
     public static string? ImportIfMacApp(string archivePath, string managedDirectory, CancellationToken cancellation)
+        => ImportIfMacApp(archivePath, managedDirectory, cancellation, out _);
+
+    internal static string? ImportIfMacApp(string archivePath, string managedDirectory, CancellationToken cancellation, out string? ownedPackage)
     {
+        ownedPackage = null;
         using var input = File.OpenRead(archivePath);
         if (input.Length > SafetyLimits.MaxArchiveBytes) throw new InvalidDataException("ZIP превышает допустимый размер.");
         using var archive = new ZipArchive(input, ZipArchiveMode.Read);
@@ -102,6 +106,7 @@ internal static class MacPackageImporter
                     File.SetUnixFileMode(Destination(staging, item.Name), (UnixFileMode)(item.Mode & 0x1FF));
             string app = Destination(staging, appRoot.TrimEnd('/'));
             if (!Directory.Exists(app)) throw new InvalidDataException("Не удалось распаковать приложение .app.");
+            ownedPackage = staging; // Exact new child; caller owns precommit rollback.
             return app;
         }
         catch
@@ -114,6 +119,19 @@ internal static class MacPackageImporter
             Directory.Delete(verified, recursive: true);
             throw;
         }
+    }
+
+    internal static void DiscardOwnedPackage(string managedDirectory, string ownedPackage)
+    {
+        string managed = Path.GetFullPath(managedDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        string package = Path.GetFullPath(ownedPackage).TrimEnd(Path.DirectorySeparatorChar);
+        string name = Path.GetFileName(package);
+        if (!string.Equals(Path.GetDirectoryName(package), managed, StringComparison.Ordinal)
+            || !name.StartsWith("package-", StringComparison.Ordinal) || name.Length != 40
+            || !Guid.TryParseExact(name[8..], "N", out _))
+            throw new IOException("Нельзя удалить неизвестную папку распаковки.");
+        RejectReparseAncestors(package);
+        if (Directory.Exists(package)) Directory.Delete(package, recursive: true);
     }
 
     private static string NormalizeName(string name)

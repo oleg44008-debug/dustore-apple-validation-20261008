@@ -37,6 +37,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _operationIndeterminate = true;
     private Guid? _convertedGameId;
     private CancellationTokenSource? _operation;
+    private long _operationGeneration;
     private GameItemViewModel? _selectedGame;
     private string _search = "", _source = "", _gameName = "", _output = "";
     private string _status = "Добавьте игру в библиотеку или выберите сборку в eX.";
@@ -500,24 +501,33 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     public bool HasSelectionAndHero => HasSelection && ShowHeroCard;
 
-    /// <summary>Free converts at most 4 MB/s of game data; Prime finishes as fast as the Mac allows.</summary>
-    private async Task HoldFreeExPaceAsync(string input, System.Diagnostics.Stopwatch started, CancellationToken ct)
+    private static long CountInputBytes(string input, CancellationToken ct)
     {
-        if (Edition.IsPrime) return;
+        ct.ThrowIfCancellationRequested();
+        if (File.Exists(input)) return new FileInfo(input).Length;
         long bytes = 0;
-        try
+        foreach (string file in Directory.EnumerateFiles(input, "*", SearchOption.AllDirectories))
         {
-            bytes = File.Exists(input) ? new FileInfo(input).Length
-                : Directory.EnumerateFiles(input, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+            ct.ThrowIfCancellationRequested();
+            bytes = checked(bytes + new FileInfo(file).Length);
         }
-        catch (Exception) { return; }
-        var target = TimeSpan.FromSeconds(bytes / (double)Edition.FreeExBytesPerSecond);
-        while (started.Elapsed < target)
+        return bytes;
+    }
+
+    /// <summary>The Free pace is an elapsed-time gate, never a claim about transferred bytes.</summary>
+    private async Task HoldFreeExPaceAsync(long bytes, System.Diagnostics.Stopwatch started, CancellationToken ct, long generation)
+    {
+        RequireCurrentOperation(ct, generation);
+        if (Edition.IsPrime || bytes == 0) return;
+        double targetSeconds = bytes / (double)Edition.FreeExBytesPerSecond;
+        while (targetSeconds > started.Elapsed.TotalSeconds)
         {
-            double done = started.Elapsed.TotalSeconds / target.TotalSeconds;
-            Status = $"Free: eX переносит не быстрее 2 МБ/с — {bytes * done / 1048576:0} из {bytes / 1048576.0:0} МБ ({done * 100:0}%). В Prime без ограничений.";
-            await Task.Delay(400, ct);
+            RequireCurrentOperation(ct, generation);
+            double remaining = targetSeconds - started.Elapsed.TotalSeconds;
+            Status = $"Free: завершаю перенос с ограничением 2 МБ/с. Осталось ждать около {Math.Ceiling(remaining):0} с.";
+            await Task.Delay(TimeSpan.FromSeconds(Math.Min(.4, remaining)), ct);
         }
+        RequireCurrentOperation(ct, generation);
     }
 
     public void LoadAppearance()
@@ -574,21 +584,27 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task<bool> InstallWineAsync()
     {
-        var progress = new Progress<WineProgress>(p =>
-        {
-            WineProgress = p.Fraction * 100;
-            _wineStatus = p.TotalBytes > 0 && p.Fraction < 1
-                ? $"{p.Stage} {p.ReceivedBytes / 1048576} из {p.TotalBytes / 1048576} МБ · {p.Fraction * 100:0}%" : p.Stage;
-            Notify(nameof(WineStatus));
-        });
         bool installed = false;
+        long generation = 0;
         await PerformAsync("Устанавливаю Wine…", async ct =>
         {
+            generation = _operationGeneration;
+            var progress = new Progress<WineProgress>(p =>
+            {
+                if (!OwnsOperation(ct, generation) || ct.IsCancellationRequested) return;
+                WineProgress = p.Fraction * 100;
+                _wineStatus = p.TotalBytes > 0 && p.Fraction < 1
+                    ? $"{p.Stage} {p.ReceivedBytes / 1048576} из {p.TotalBytes / 1048576} МБ · {p.Fraction * 100:0}%" : p.Stage;
+                Notify(nameof(WineStatus));
+            });
             await Task.Yield();
             await WineRuntime.InstallAsync(progress, ct);
-            _wineStatus = (await WineRuntime.InstalledVersionTextAsync()) + " и DXVK установлены. Перенесённые Windows-игры запускаются через них.";
+            string version = await WineRuntime.InstalledVersionTextAsync();
+            RequireCurrentOperation(ct, generation);
+            _wineStatus = version + " и DXVK установлены. Перенесённые Windows-игры запускаются через них.";
             installed = true;
         });
+        if (_disposed || generation != _operationGeneration) return installed;
         if (!installed) _wineStatus = HasError ? "Wine не установлен: " + Error : "Установка Wine отменена. Её можно повторить.";
         WineProgress = 0; NotifyWine();
         return installed;
@@ -913,7 +929,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public Task AnalyzeAsync() => PerformAsync("Анализирую сборку…", async ct =>
     {
-        _plan = await _services.InspectAsync(SourcePath, SelectedTarget.Platform, EffectiveArchitecture, ct);
+        long generation = _operationGeneration;
+        string source = SourcePath;
+        var target = SelectedTarget.Platform;
+        var architecture = EffectiveArchitecture;
+        var plan = await _services.InspectAsync(source, target, architecture, ct);
+        RequireCurrentOperation(ct, generation);
+        _plan = plan;
         RuntimeVersion = _plan.RuntimeVersion ?? "";
         NotifyPlan();
         Status = _plan.CanConvert ? "Анализ завершён. Проверьте систему и путь готового ZIP." : _plan.Title;
@@ -922,36 +944,71 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private async Task ConvertAsync()
     {
         if (!CanConvert || _plan is null) return;
-        if (!Edition.IsPrime) await TrustedClock.SyncAsync(DataDirectory);
-        if (ExDailyQuota.Refusal(DataDirectory) is { } quota) { Status = quota; return; }
+        // Capture the entire requested conversion before the first asynchronous boundary.
+        var request = new ConversionRequest(SourcePath, SelectedTarget.Platform, GameName.Trim(), OutputPath,
+            string.IsNullOrWhiteSpace(RuntimeVersion) ? null : RuntimeVersion.Trim(), EffectiveArchitecture,
+            string.IsNullOrWhiteSpace(RuntimePath) ? null : RuntimePath.Trim(), _plan.Method);
+        string dataDirectory = DataDirectory;
+        bool committed = false;
+        string? retainedArtifact = null;
+        long generation = 0;
         await PerformAsync("Создаю пакет…", async ct =>
         {
+            generation = _operationGeneration;
+            if (!Edition.IsPrime) await TrustedClock.SyncAsync(dataDirectory, ct);
+            RequireCurrentOperation(ct, generation);
+            if (ExDailyQuota.Refusal(dataDirectory) is { } quota) { Status = quota; return; }
             for (int left = Edition.FreeQueueSeconds; !Edition.IsPrime && left > 0; left--)
             {
+                RequireCurrentOperation(ct, generation);
                 Status = $"Очередь Free: перенос начнётся через {left} с. В Prime — сразу и без очереди.";
                 await Task.Delay(1000, ct);
             }
-            var request = new ConversionRequest(SourcePath, SelectedTarget.Platform, GameName.Trim(), OutputPath,
-                string.IsNullOrWhiteSpace(RuntimeVersion) ? null : RuntimeVersion.Trim(), EffectiveArchitecture,
-                string.IsNullOrWhiteSpace(RuntimePath) ? null : RuntimePath.Trim(), _plan.Method);
+            long bytes = Edition.IsPrime ? 0 : await Task.Run(() => CountInputBytes(request.InputPath, ct), ct);
+            RequireCurrentOperation(ct, generation);
             var started = System.Diagnostics.Stopwatch.StartNew();
-            var result = await _services.ConvertAsync(request, new Progress<string>(AppendLog), ct);
-            await HoldFreeExPaceAsync(request.InputPath, started, ct);
-            ExDailyQuota.RecordSuccess(DataDirectory); Notify(nameof(FreeQuotaLine));
-            ResultPath = result.OutputPath;
-            foreach (string warning in result.Warnings) AppendLog(warning);
+            var progress = new Progress<string>(message =>
+            {
+                if (OwnsOperation(ct, generation) && !ct.IsCancellationRequested) AppendLog(message);
+            });
+            var result = await _services.ConvertAsync(request, progress, ct);
+            // Core packaging commits its ZIP independently. A later cancellation keeps it.
+            retainedArtifact = result.OutputPath;
+            RequireCurrentOperation(ct, generation);
+            await HoldFreeExPaceAsync(bytes, started, ct, generation);
+            Guid? readyId = null;
             if (request.Target == TargetPlatform.MacOS)
             {
-                var original = _entries.FirstOrDefault(g => string.Equals(g.SourcePath, request.InputPath, StringComparison.Ordinal));
-                original ??= await _services.AddGameAsync(request.InputPath, CancellationToken.None);
-                var ready = await _services.PrepareConvertedMacAsync(original.Id, result, CancellationToken.None);
-                _convertedGameId = ready.Id;
-                await ReloadLibraryAsync(CancellationToken.None, ready.Id);
-                Status = "macOS-пакет готов. Игра добавлена в библиотеку для запуска." + ExDailyQuota.Remaining(DataDirectory);
+                // Phase B service ABI: one complete entry save, with owned extraction cleanup
+                // before commit. A returned receipt establishes the durable commit cut-off.
+                var receipt = await _services.CommitConvertedMacAsync(request.InputPath, result, ct);
+                readyId = receipt.Entry.Id;
             }
-            else Status = "Windows-пакет готов. Откройте ZIP на Windows для проверки запуска." + ExDailyQuota.Remaining(DataDirectory);
+            else RequireCurrentOperation(ct, generation);
+            // No cancellable await separates the committed receipt from quota recording.
+            ExDailyQuota.RecordSuccess(dataDirectory);
+            committed = true;
+            retainedArtifact = null;
+            if (!OwnsOperation(ct, generation)) return;
+            ResultPath = result.OutputPath;
+            _convertedGameId = readyId;
+            Notify(nameof(FreeQuotaLine)); UpdateActions();
+            foreach (string warning in result.Warnings) AppendLog(warning);
+            if (readyId is { } id)
+            {
+                // Refresh follows the durable commit. It cannot reverse completion or charge.
+                try { await ReloadLibraryAsync(CancellationToken.None, id, generation); }
+                catch (Exception error) { if (OwnsOperation(ct, generation)) RecordLog("Пакет сохранён; библиотеку можно обновить повторно. " + error.Message); }
+            }
+            if (!OwnsOperation(ct, generation)) return;
+            Status = (request.Target == TargetPlatform.MacOS
+                ? "macOS-пакет готов. Игра добавлена в библиотеку для запуска."
+                : "Windows-пакет готов. Откройте ZIP на Windows для проверки запуска.") + ExDailyQuota.Remaining(dataDirectory);
         });
-        if (HasResult && _plan?.Method == "wine" && !WineRuntime.IsInstalled) _ = EnsureWineAsync();
+        if (!_disposed && generation == _operationGeneration && retainedArtifact is { } artifact)
+            RecordLog("Созданный ZIP сохранён на диске: " + artifact + ". Перенос не подтверждён; лимит Free не списан.");
+        if (committed && !_disposed && generation == _operationGeneration && !IsBusy
+            && request.Method == "wine" && !WineRuntime.IsInstalled) _ = EnsureWineAsync();
     }
 
     private async Task LaunchSelectedAsync()
@@ -1000,9 +1057,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     });
 
     private async Task ReloadLibraryAsync(CancellationToken ct) => await ReloadLibraryAsync(ct, SelectedGame?.Entry.Id);
-    private async Task ReloadLibraryAsync(CancellationToken ct, Guid? select)
+    private async Task ReloadLibraryAsync(CancellationToken ct, Guid? select, long? expectedGeneration = null)
     {
-        _entries = await _services.LoadLibraryAsync(ct);
+        long generation = expectedGeneration ?? _operationGeneration;
+        var entries = await _services.LoadLibraryAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        if (_disposed || generation != _operationGeneration) return;
+        _entries = entries;
         foreach (var entry in _entries)
             if (_gameItems.TryGetValue(entry.Id, out var item)) item.UpdateEntry(entry);
             else _gameItems[entry.Id] = new GameItemViewModel(entry);
@@ -1214,20 +1275,32 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (IsBusy || _disposed) return;
         using var cancellation = new CancellationTokenSource();
+        long generation = ++_operationGeneration;
         _operation = cancellation;
         _operationPercent = 0; _operationIndeterminate = true;
         Notify(nameof(OperationPercent)); Notify(nameof(OperationIndeterminate));
         IsBusy = true; Error = ""; Status = status;
         try { await action(cancellation.Token); }
-        catch (OperationCanceledException) { Status = "Операция отменена."; }
-        catch (Exception ex) { Error = ex.Message; Status = "Операция не завершена."; AppendLog(ex.Message); }
-        finally { _operation = null; IsBusy = false; }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { if (OwnsOperation(cancellation.Token, generation)) Status = "Операция отменена."; }
+        catch (Exception ex) { if (OwnsOperation(cancellation.Token, generation)) { Error = ex.Message; RecordLog(ex.Message); Status = "Операция не завершена."; } }
+        finally { if (ReferenceEquals(_operation, cancellation)) { _operation = null; if (!_disposed) IsBusy = false; } }
     }
-    private void AppendLog(string message)
+    private bool OwnsOperation(CancellationToken token, long generation) => !_disposed
+        && generation == _operationGeneration && _operation is { } current && current.Token == token;
+    private void RequireCurrentOperation(CancellationToken token, long generation)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!OwnsOperation(token, generation)) throw new OperationCanceledException(token);
+    }
+    private void RecordLog(string message)
     {
         _log.Add(message);
         while (_log.Count > 80) _log.RemoveAt(0);
         Notify(nameof(ProgressLog));
+    }
+    private void AppendLog(string message)
+    {
+        RecordLog(message);
         Status = message;
         var progress = System.Text.RegularExpressions.Regex.Match(message, @"^Загрузка движка: (\d{1,3})%$");
         _operationIndeterminate = !progress.Success;

@@ -90,7 +90,9 @@ internal static class GameSessions
         public bool StopRequested { get; private set; }
         private Process? _assertion;
 
-        public async Task StopAsync(CancellationToken ct)
+        public Task StopAsync(CancellationToken ct) => StopAsync(ct, allowProcessKill: true);
+
+        internal async Task StopAsync(CancellationToken ct, bool allowProcessKill)
         {
             StopRequested = true;
             if (File.Exists(server))
@@ -98,7 +100,12 @@ internal static class GameSessions
                 var (code, text) = await WineRuntime.RunAsync(server, ["-k"], new Dictionary<string, string> { ["WINEPREFIX"] = Prefix }, TimeSpan.FromSeconds(20), ct);
                 if (code != 0) throw new IOException("Wine не подтвердил запрос закрытия: " + text.Trim());
             }
-            else if (!process.HasExited) process.Kill(entireProcessTree: false);
+            else if (!process.HasExited)
+            {
+                if (!allowProcessKill)
+                    throw new IOException("Wine не может подтвердить остановку игры. DUSTORE остаётся открытым; закройте игру через её панель.");
+                process.Kill(entireProcessTree: false);
+            }
         }
 
         public async Task<int> ObserveAsync()

@@ -16,11 +16,12 @@ internal sealed class GameControlHub : IDisposable
         GameSessions.Changed += Changed;
         NativeAppSessions.Changed += Changed;
     }
+    internal bool HasRunningGames => NativeAppSessions.Snapshot().Length > 0 || GameSessions.HasWineSessions;
     internal GameControlSurface? Find(Guid id) => _windows.GetValueOrDefault(id);
     private void Changed(object? sender, GameSessionEventArgs args) => Dispatcher.UIThread.Post(Refresh);
     private void Refresh()
     {
-        if (_disposed || !_launcher.IsVisible) return;
+        if (_disposed) return;
         var native = NativeAppSessions.Snapshot(); var wine = GameSessions.Snapshot();
         var ids = native.Select(s => s.Entry.Id).Concat(wine.Select(s => s.Entry.Id)).ToHashSet();
         foreach (var id in _windows.Keys.Where(id => !ids.Contains(id) || !_windows[id].IsVisible).ToArray())
@@ -34,6 +35,7 @@ internal sealed class GameControlHub : IDisposable
                 for (int i = 0; i < 20 && GameSessions.Find(session.Entry.Id) is not null; i++) await Task.Delay(100);
                 return GameSessions.Find(session.Entry.Id) is null;
             });
+        _launcher.GameSessionsReconciled();
     }
     private void Add(GameEntry entry, Func<bool, Task<bool>> stop)
     {
@@ -47,9 +49,7 @@ internal sealed class GameControlHub : IDisposable
     internal void ReturnToLauncher(Guid id)
     {
         if (_disposed) return;
-        if (_launcher.WindowState == WindowState.Minimized) _launcher.WindowState = WindowState.Normal;
-        _launcher.Show(); _launcher.Activate();
-        _launcher.ViewModel.ShowRunningGame(id);
+        _launcher.ReturnFromGameControls(id);
     }
     public void Dispose()
     {

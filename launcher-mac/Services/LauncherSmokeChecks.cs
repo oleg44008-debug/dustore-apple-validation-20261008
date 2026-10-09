@@ -180,6 +180,48 @@ public static class LauncherSmokeChecks
             await MustThrowAsync<ArgumentException>(() => service.OpenUrlAsync("file:///etc/passwd", cancellation));
             checks.Add("external URLs are limited to HTTP and HTTPS");
 
+            // Use the existing owned Tiny ZIP only as a service-commit fixture.
+            var commitOriginal = await service.AddGameAsync(portable, cancellation).ConfigureAwait(false);
+            commitOriginal = await service.SetWindowOptionsAsync(commitOriginal.Id, GameLaunchOptions.Windowed, 960, 540, cancellation).ConfigureAwait(false);
+            string portableHash = HashSource(portable);
+            var commitPackage = new PackageResult(appZip, "SmokeFixture", portableHash, "", "", []);
+            string libraryBeforeCancel = HashSource(service.LibraryPath);
+            await MustThrowAsync<OperationCanceledException>(() => service.CommitConvertedMacAsync(portable, commitPackage, cancelled.Token));
+            var afterCancelledCommit = (await new LauncherServices(profileDirectory, fakePlatform).LoadLibraryAsync(cancellation).ConfigureAwait(false))
+                .Single(e => e.Id == commitOriginal.Id);
+            Check(HashSource(service.LibraryPath) == libraryBeforeCancel && afterCancelledCommit == commitOriginal,
+                "pre-cancelled converted commit preserves the durable library and existing entry");
+
+            var committed = await service.CommitConvertedMacAsync(portable, commitPackage, cancellation).ConfigureAwait(false);
+            var durableCommit = (await new LauncherServices(profileDirectory, fakePlatform).LoadLibraryAsync(cancellation).ConfigureAwait(false))
+                .Single(e => e.SourcePath == portable);
+            Check(committed.Entry == (commitOriginal with { PreparedMacAppPath = committed.Entry.PreparedMacAppPath, LastOutputPath = committed.OutputPath }),
+                "converted commit preserves the existing ID, source, options and other entry fields");
+            Check(committed.OutputPath == Path.GetFullPath(appZip) && durableCommit == committed.Entry
+                && committed.Entry.CanLaunchOnMac && committed.Entry.PreparedMacAppPath is not null
+                && Directory.Exists(committed.Entry.PreparedMacAppPath)
+                && File.Exists(Path.Combine(committed.Entry.PreparedMacAppPath, "Contents", "Info.plist"))
+                && File.Exists(Path.Combine(committed.Entry.PreparedMacAppPath, "Contents", "MacOS", "Tiny")),
+                "converted commit returns a prepared app receipt matching an independent durable reload");
+            Check(HashSource(portable) == portableHash && HashSource(appZip) == archiveHash,
+                "converted commit preserves the original input and completed ZIP bytes");
+
+            string invalidCommitZip = Path.Combine(fixtures, "Invalid-commit.zip");
+            File.WriteAllText(invalidCommitZip, "Owned smoke fixture: not a ZIP archive.");
+            string invalidCommitHash = HashSource(invalidCommitZip);
+            string libraryBeforeFailure = HashSource(service.LibraryPath);
+            string preparedBeforeFailure = HashSource(committed.Entry.PreparedMacAppPath!);
+            var invalidCommitPackage = new PackageResult(invalidCommitZip, "SmokeFixture", portableHash, "", "", []);
+            await MustThrowAsync<InvalidDataException>(() => service.CommitConvertedMacAsync(portable, invalidCommitPackage, cancellation));
+            var afterFailedCommit = (await new LauncherServices(profileDirectory, fakePlatform).LoadLibraryAsync(cancellation).ConfigureAwait(false))
+                .Single(e => e.Id == committed.Entry.Id);
+            Check(HashSource(service.LibraryPath) == libraryBeforeFailure && afterFailedCommit == committed.Entry
+                && Directory.Exists(committed.Entry.PreparedMacAppPath)
+                && HashSource(committed.Entry.PreparedMacAppPath!) == preparedBeforeFailure
+                && HashSource(appZip) == archiveHash && HashSource(portable) == portableHash
+                && HashSource(invalidCommitZip) == invalidCommitHash,
+                "invalid converted ZIP preserves the previous durable entry, prepared app and ZIP bytes");
+
             string pe = Path.Combine(fixtures, "Windows.exe");
             File.WriteAllBytes(pe, new byte[] { 0x4D, 0x5A, 0, 0 });
             var windowsEntry = await service.AddGameAsync(pe, cancellation).ConfigureAwait(false);

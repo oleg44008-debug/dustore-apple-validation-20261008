@@ -21,23 +21,28 @@ public static class TrustedClock
     /// <summary>Tests only: replaces the network answer.</summary>
     public static Func<DateTimeOffset?>? ServerOverride { get; set; }
 
-    public static async Task SyncAsync(string dataDirectory)
+    public static async Task SyncAsync(string dataDirectory, CancellationToken cancellation = default)
     {
+        cancellation.ThrowIfCancellationRequested();
         DateTimeOffset? answer = ServerOverride?.Invoke();
         if (ServerOverride is null)
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
             foreach (string source in Sources)
             {
+                cancellation.ThrowIfCancellationRequested();
                 try
                 {
-                    using var response = await http.SendAsync(new HttpRequestMessage(HttpMethod.Head, source)).ConfigureAwait(false);
+                    using var request = new HttpRequestMessage(HttpMethod.Head, source);
+                    using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
                     answer = response.Headers.Date;
                     if (answer.HasValue) break;
                 }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
                 catch (Exception) { }
             }
         }
+        cancellation.ThrowIfCancellationRequested();
         if (answer is not { } time) return;
         lock (Gate) { _server = time; Since.Restart(); }
         ExDailyQuota.NoteTrustedTime(dataDirectory, time);

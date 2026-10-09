@@ -8,6 +8,13 @@ namespace DustoreLauncherV.Mac.Services;
 /// <summary>Signs only newly imported, simple Godot copies. Never edits a user source app or ZIP.</summary>
 internal static class MacLocalSigner
 {
+    internal sealed class RetirementFailedException : IOException
+    {
+        internal RetirementFailedException(Exception failure, Exception retirementFailure)
+            : base("Не удалось подтвердить остановку собственного codesign; новая копия пока не может быть удалена.",
+                new AggregateException(failure, retirementFailure)) { }
+    }
+
     public static async Task SignOwnedGodotIfNeededAsync(string app, string ownedRoot, CancellationToken cancellation)
     {
         if (!OperatingSystem.IsMacOS()) return;
@@ -65,18 +72,30 @@ internal static class MacLocalSigner
         var start = new ProcessStartInfo("/usr/bin/codesign") { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true, CreateNoWindow = true };
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new IOException("macOS codesign не запустился.");
-        Task<string> error = process.StandardError.ReadToEndAsync(cancellation);
-        Task<string> output = process.StandardOutput.ReadToEndAsync(cancellation);
         try
         {
+            Task<string> error = process.StandardError.ReadToEndAsync(cancellation);
+            Task<string> output = process.StandardOutput.ReadToEndAsync(cancellation);
             await process.WaitForExitAsync(cancellation).ConfigureAwait(false);
             string text = await error.ConfigureAwait(false);
             await output.ConfigureAwait(false);
             if (process.ExitCode != 0) throw new IOException("Не удалось локально подписать копию Godot для запуска: " + text.Trim());
         }
-        catch (OperationCanceledException)
+        catch (Exception failure)
         {
-            try { if (!process.HasExited) process.Kill(entireProcessTree: false); } catch (InvalidOperationException) { }
+            // Only the Process.Start-returned codesign is touched. A failed
+            // retirement is explicit so the caller retains its new copy safely.
+            try
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: false); }
+                catch (InvalidOperationException) when (process.HasExited) { }
+                using var retirement = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await process.WaitForExitAsync(retirement.Token).ConfigureAwait(false);
+            }
+            catch (Exception retirementFailure)
+            {
+                throw new RetirementFailedException(failure, retirementFailure);
+            }
             throw;
         }
     }

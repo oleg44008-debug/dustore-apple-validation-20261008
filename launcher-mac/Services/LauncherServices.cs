@@ -4,6 +4,9 @@ using DustoreX.AutoConverter;
 
 namespace DustoreLauncherV.Mac.Services;
 
+/// <summary>A successful return means the prepared app is durably referenced by library.json.</summary>
+internal sealed record ConvertedMacCommit(GameEntry Entry, string OutputPath);
+
 public sealed class LauncherServices
 {
     private const int MaximumLibraryEntries = 10000;
@@ -141,6 +144,69 @@ public sealed class LauncherServices
         return await UpdateEntryAsync(id, e => e with { PreparedMacAppPath = app, LastOutputPath = output }, cancellation).ConfigureAwait(false);
     }
 
+    internal async Task<ConvertedMacCommit> CommitConvertedMacAsync(string sourcePath, PackageResult result, CancellationToken cancellation = default)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        EnsureProfileDirectory();
+        sourcePath = ExistingPath(sourcePath);
+        string output = ExistingPath(result.OutputPath);
+        string name = Path.GetFileNameWithoutExtension(sourcePath.TrimEnd(Path.DirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(name)) name = "Игра";
+
+        await _libraryGate.WaitAsync(cancellation).ConfigureAwait(false);
+        string? ownedPackage = null;
+        string? managedDirectory = null;
+        bool committed = false;
+        try
+        {
+            await EnsureLoadedAsync(cancellation).ConfigureAwait(false);
+            int index = _entries!.FindIndex(e => PathEquals(e.SourcePath, sourcePath));
+            if (index < 0 && _entries.Count >= MaximumLibraryEntries)
+                throw new InvalidDataException("В библиотеке слишком много записей.");
+            GameEntry? previous = index < 0 ? null : _entries[index];
+            var original = previous ?? new GameEntry(Guid.NewGuid(), name, sourcePath, DateTimeOffset.UtcNow);
+            managedDirectory = Path.Combine(ManagedGamesDirectory, original.Id.ToString("N"));
+            string? app = await Task.Run(() => MacPackageImporter.ImportIfMacApp(output,
+                managedDirectory, cancellation, out ownedPackage), cancellation).ConfigureAwait(false);
+            if (app is null) throw new InvalidDataException("В пакете нет единственного приложения .app для macOS.");
+            cancellation.ThrowIfCancellationRequested();
+            MacQuarantine.Preserve(output, app);
+            await MacLocalSigner.SignOwnedGodotIfNeededAsync(app, ManagedGamesDirectory, cancellation).ConfigureAwait(false);
+            cancellation.ThrowIfCancellationRequested();
+
+            var updated = original with { PreparedMacAppPath = app, LastOutputPath = output };
+            var receipt = new ConvertedMacCommit(updated, output);
+            if (index < 0) _entries.Add(updated); else _entries[index] = updated;
+            try { await SaveAsync(cancellation).ConfigureAwait(false); }
+            catch
+            {
+                if (index < 0) _entries.Remove(updated); else _entries[index] = previous!;
+                throw;
+            }
+
+            // SaveAsync has published the complete entry. No cancellation or cleanup
+            // action may turn that durable success into an uncommitted result.
+            committed = true;
+            return receipt;
+        }
+        catch (Exception failure)
+        {
+            if (!committed && ownedPackage is not null && managedDirectory is not null)
+            {
+                if (failure is MacLocalSigner.RetirementFailedException)
+                    throw new IOException("Не удалось дождаться остановки подписи. Новая копия сохранена: " + ownedPackage, failure);
+                try { MacPackageImporter.DiscardOwnedPackage(managedDirectory, ownedPackage); }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException("Операция не сохранена в библиотеке; не удалось удалить новую копию: " + ownedPackage,
+                        failure, cleanupFailure);
+                }
+            }
+            throw;
+        }
+        finally { _libraryGate.Release(); }
+    }
+
     public Task<GameEntry> RegisterPreparedMacAppAsync(Guid id, string appPath, CancellationToken cancellation = default)
     {
         appPath = ExistingPath(appPath);
@@ -261,14 +327,15 @@ public sealed class LauncherServices
     private async Task SaveAsync(CancellationToken cancellation)
     {
         EnsureProfileDirectory();
-        string temporary = Path.Combine(DataDirectory, "library-" + Guid.NewGuid().ToString("N") + ".tmp");
+        string? temporary = Path.Combine(DataDirectory, "library-" + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
             await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(_entries, JsonOptions), cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
             File.Move(temporary, LibraryPath, overwrite: true);
+            temporary = null; // Commit cut-off: no later file cleanup or token check.
         }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        finally { if (temporary is not null && File.Exists(temporary)) File.Delete(temporary); }
     }
 
     private static string ExistingPath(string path)

@@ -33,6 +33,7 @@ public partial class App : Application
                 return;
             }
             desktop.MainWindow = window;
+            window.AttachGameLifetime(desktop);
             if (Program.UiSmoke)
                 window.Opened += async (_, _) =>
                 {

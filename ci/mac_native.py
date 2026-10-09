@@ -49,7 +49,7 @@ def main() -> int:
         executable = bundle / "Contents/MacOS/DustoreLauncherV.Mac"
         published_core = bundle / "Contents/MacOS/DustoreX.AutoConverter.Core.dll"
         run.check("published converter Core byte-identical", hashlib.sha256(published_core.read_bytes()).hexdigest() == CORE_HASH)
-        run.check("package edition/version", package_report["edition"] == args.edition.lower() and package_report["metadata"]["CFBundleShortVersionString"] == "5.4.0")
+        run.check("package edition/version", package_report["edition"] == args.edition.lower() and package_report["metadata"]["CFBundleShortVersionString"] == "5.4.1")
         run.check("native ad-hoc signing reported", package_report["signing"]["adHoc"] is True and package_report["signing"]["notarized"] is False)
         archive = Path(package_report["archive"])
         installers = list(staging.glob("*.dmg"))
@@ -102,7 +102,7 @@ def main() -> int:
         run.details["physicalVoiceOverVerified"] = False
     except Exception as error:
         run.check("native validation completed", False, f"{type(error).__name__}: {error}")
-    return run.finish("Native macOS 5.4.0 launcher build/analyzers/package/normal LaunchServices/DMG/service/WebKit/offline UI and owned input fixtures on the matching CPU host. Ad-hoc signed, not Developer ID notarized. No original game, arbitrary Wine compatibility, FPS or real VoiceOver claim.")
+    return run.finish("Native macOS 5.4.1 launcher build/analyzers/package/normal LaunchServices/DMG/service/WebKit/offline UI and owned input fixtures on the matching CPU host. Ad-hoc signed, not Developer ID notarized. No original game, arbitrary Wine compatibility, FPS or real VoiceOver claim.")
 
 
 if __name__ == "__main__":

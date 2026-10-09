@@ -20,6 +20,7 @@ public partial class MainWindow : Window
 {
     private Task? _initializeTask;
     private bool _closingPrompt;
+    private bool _introOffered;
     private readonly SurfaceMotion _surfaceMotion = new();
     private readonly GameControlHub _gameControls;
 
@@ -69,14 +70,14 @@ public partial class MainWindow : Window
             if (e.PropertyName == nameof(MainViewModel.Section))
             {
                 ShowWebSection();
-                _web?.SetPresentationActive(IsActive && WindowState != WindowState.Minimized && ViewModel.IsWeb);
+                _web?.SetPresentationActive(IsVisible && IsActive && WindowState != WindowState.Minimized && ViewModel.IsWeb);
                 Dispatcher.UIThread.Post(() => _surfaceMotion.Reveal(this.FindControl<Control>(ViewModel.Section switch
                 {
                     "library" => "LibraryPage", "ex" => "ExPage", "settings" => "SettingsPage", _ => ""
-                }), ViewModel.EffectiveReduceMotion || WindowState == WindowState.Minimized));
+                }), ViewModel.EffectiveReduceMotion || !IsVisible || WindowState == WindowState.Minimized));
             }
             if (e.PropertyName == nameof(MainViewModel.SelectedGame) && ViewModel.IsLibrary)
-                Dispatcher.UIThread.Post(() => _surfaceMotion.Reveal(this.FindControl<Border>("GameHero"), ViewModel.EffectiveReduceMotion || WindowState == WindowState.Minimized, 180, 6));
+                Dispatcher.UIThread.Post(() => _surfaceMotion.Reveal(this.FindControl<Border>("GameHero"), ViewModel.EffectiveReduceMotion || !IsVisible || WindowState == WindowState.Minimized, 180, 6));
             if (e.PropertyName == nameof(MainViewModel.ShelfPageIndex) && this.FindControl<ScrollViewer>("LibraryScroll") is { } scroll) scroll.Offset = default;
             if (e.PropertyName == nameof(MainViewModel.EffectiveReduceMotion))
             {
@@ -109,15 +110,15 @@ public partial class MainWindow : Window
         DragDrop.AddDropHandler(this, OnDrop);
         SizeChanged += (_, _) => UpdatePresentation();
         PositionChanged += (_, _) => RefreshCurrentDisplay();
-        Closed += (_, _) => { _gameControls.Dispose(); _surfaceMotion.Dispose(); IntroMotion.Skip(); ViewModel.Dispose(); };
+        Closed += (_, _) => { DisposeGameLifetime(); _gameControls.Dispose(); _surfaceMotion.Dispose(); IntroMotion.Skip(); ViewModel.Dispose(); };
         PropertyChanged += (_, args) =>
         {
-            if (args.Property != WindowStateProperty && args.Property != IsActiveProperty) return;
-            bool minimized = WindowState == WindowState.Minimized;
-            ViewModel.SetBackgroundWorkPaused(minimized);
-            if (IsActive) ViewModel.RefreshSystemMotionPreference();
-            if (minimized) { _surfaceMotion.Reset(); IntroMotion.Skip(); }
-            _web?.SetPresentationActive(IsActive && !minimized && ViewModel.IsWeb);
+            if (args.Property != WindowStateProperty && args.Property != IsActiveProperty && args.Property != IsVisibleProperty) return;
+            bool paused = !IsVisible || WindowState == WindowState.Minimized;
+            ViewModel.SetBackgroundWorkPaused(paused);
+            if (IsVisible && IsActive) ViewModel.RefreshSystemMotionPreference();
+            if (paused) { _surfaceMotion.Reset(); IntroMotion.Skip(); }
+            _web?.SetPresentationActive(IsActive && !paused && ViewModel.IsWeb);
         };
     }
 
@@ -288,6 +289,8 @@ public partial class MainWindow : Window
 
     private async void OnOpened(object? sender, EventArgs args)
     {
+        bool firstOpen = !_introOffered;
+        _introOffered = true;
         ViewModel.RefreshSystemMotionPreference();
         if (Screens.ScreenFromWindow(this) is { } screen)
         {
@@ -301,7 +304,7 @@ public partial class MainWindow : Window
             }
         }
         UpdatePresentation();
-        if (!Program.UiSmoke && !ViewModel.EffectiveReduceMotion && MainViewModel.PrimeIntroWanted(ViewModel.DataDirectory)) _ = IntroMotion.PlayAsync(this);
+        if (firstOpen && IsVisible && WindowState != WindowState.Minimized && !Program.UiSmoke && !ViewModel.EffectiveReduceMotion && MainViewModel.PrimeIntroWanted(ViewModel.DataDirectory)) _ = IntroMotion.PlayAsync(this);
         try
         {
             await InitializeAsync();
@@ -437,6 +440,7 @@ public partial class MainWindow : Window
 
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
+        if (PreserveGamesOnClose(e)) return;
         if (!ViewModel.IsBusy) return;
         e.Cancel = true;
         if (_closingPrompt) return;

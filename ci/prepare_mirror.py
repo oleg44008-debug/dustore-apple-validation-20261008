@@ -79,7 +79,7 @@ def main() -> int:
 
     if "mac" in selected:
         root = roots["mac"]
-        for name in ["DustoreLauncherV.Mac.csproj", "App.axaml", "App.axaml.cs", "MainWindow.axaml", "MainWindow.axaml.cs", "Program.cs", "StartupDiagnostics.cs", "README.md"]:
+        for name in ["DustoreLauncherV.Mac.csproj", "App.axaml", "App.axaml.cs", "MainWindow.axaml", "MainWindow.axaml.cs", "MainWindow.GameLifetime.cs", "Program.cs", "StartupDiagnostics.cs", "README.md"]:
             include(root / name, f"launcher-mac/{name}", "mac", f"DustoreLauncherV-Mac/{name}")
         for folder, suffixes in {
             "Controls": {".cs"}, "Services": {".cs"}, "ViewModels": {".cs"},
