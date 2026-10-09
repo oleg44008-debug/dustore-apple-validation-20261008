@@ -121,16 +121,32 @@ struct TransferPanel: View {
 
 struct StoreScreen: View {
     @EnvironmentObject var library: Library
+    @Environment(\.dynamicTypeSize) private var dynamicType
     @StateObject private var state = StoreState()
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Button { state.back() } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.disabled(!state.canGoBack).accessibilityLabel("Назад в магазине")
-                VStack(alignment: .leading, spacing: 3) { Text("Магазин").font(.headline); Text("dustore.ru").font(.caption).foregroundColor(Theme.dim) }
-                Spacer(minLength: 4)
-                Button { state.reload() } label: { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }.accessibilityLabel("Обновить магазин").accessibilityIdentifier("store.reload")
-                EditionMark()
-            }.foregroundColor(Theme.text).padding(.horizontal, 12).padding(.vertical, 5).background(Theme.background)
+            if dynamicType.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Магазин").font(.headline).fixedSize(horizontal: false, vertical: true)
+                        Text("dustore.ru").font(.caption).foregroundColor(Theme.dim).fixedSize(horizontal: false, vertical: true)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 10) {
+                        Button { state.back() } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.disabled(!state.canGoBack).accessibilityLabel("Назад в магазине")
+                        Button { state.reload() } label: { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }.accessibilityLabel("Обновить магазин").accessibilityIdentifier("store.reload")
+                        Spacer(minLength: 4)
+                        EditionMark()
+                    }
+                }.foregroundColor(Theme.text).padding(.horizontal, 12).padding(.vertical, 5).background(Theme.background)
+            } else {
+                HStack(spacing: 10) {
+                    Button { state.back() } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.disabled(!state.canGoBack).accessibilityLabel("Назад в магазине")
+                    VStack(alignment: .leading, spacing: 3) { Text("Магазин").font(.headline); Text("dustore.ru").font(.caption).foregroundColor(Theme.dim) }
+                    Spacer(minLength: 4)
+                    Button { state.reload() } label: { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }.accessibilityLabel("Обновить магазин").accessibilityIdentifier("store.reload")
+                    EditionMark()
+                }.foregroundColor(Theme.text).padding(.horizontal, 12).padding(.vertical, 5).background(Theme.background)
+            }
             if state.loading { ProgressView(value: state.progress).tint(Theme.selection).accessibilityLabel("Загрузка магазина") }
             ZStack {
                 StoreWebView(library: library, state: state)
@@ -141,8 +157,20 @@ struct StoreScreen: View {
                             DisplayTitle(text: "Магазин недоступен", size: 26)
                             Text(error).font(.subheadline).foregroundColor(Theme.muted).fixedSize(horizontal: false, vertical: true)
                             Text("Ваша библиотека остаётся на устройстве. Для новых загрузок понадобится интернет.").font(.subheadline).foregroundColor(Theme.dim)
-                            YellowButton(title: "Попробовать снова", symbol: "arrow.clockwise") { state.reload() }.accessibilityIdentifier("store.retry")
+                            if !dynamicType.isAccessibilitySize {
+                                YellowButton(title: "Попробовать снова", symbol: "arrow.clockwise") { state.reload() }.accessibilityIdentifier("store.retry")
+                            }
                         }.padding(22).frame(maxWidth: 600).frame(maxWidth: .infinity)
+                    }.safeAreaInset(edge: .bottom, spacing: 0) {
+                        if dynamicType.isAccessibilitySize {
+                            // Keep the one recovery action above the native tab bar; error details remain scrollable.
+                            Button { state.reload() } label: {
+                                Text("Попробовать снова").fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity)
+                            }.buttonStyle(PrimePressStyle(tone: .primary))
+                                .accessibilityIdentifier("store.retry").accessibilitySortPriority(1)
+                                .frame(maxWidth: 600).padding(.horizontal, 22).padding(.vertical, 12)
+                                .frame(maxWidth: .infinity).background(Theme.background)
+                        }
                     }.background(Theme.background).accessibilityIdentifier("store.error")
                 }
             }

@@ -69,34 +69,49 @@ final class DustoreUITests: XCTestCase {
         if let identifier = identifier, button.identifier != identifier {
             throw NavigationIssue("Wrong navigation identity for \(destination.rawValue): \(button.identifier)")
         }
-        guard contains(parent, button.frame), contains(window, button.frame), button.isHittable else {
-            throw NavigationIssue("Navigation destination is not immediately hittable: \(destination.rawValue), \(button.frame)")
+        let frame = button.frame
+        guard contains(parent, frame), contains(window, frame), button.isHittable else {
+            throw NavigationIssue("Navigation destination is not immediately hittable: \(destination.rawValue), \(frame)")
         }
     }
     private func exactWindow(in app: XCUIApplication) throws -> CGRect {
-        let windows = app.windows.allElementsBoundByIndex.filter { $0.exists && positive($0.frame) }
-        guard windows.count == 1 else {
-            throw NavigationIssue("Expected one app window, found \(windows.count)")
+        let frames = app.windows.allElementsBoundByIndex.compactMap { element -> CGRect? in
+            guard element.exists else { return nil }
+            let frame = element.frame
+            return positive(frame) ? frame : nil
         }
-        return windows[0].frame
+        guard frames.count == 1 else {
+            throw NavigationIssue("Expected one app window, found \(frames.count)")
+        }
+        return frames[0]
     }
     private func systemBar(_ bar: XCUIElement, window: CGRect) throws -> Navigation {
-        let children = bar.buttons
-        guard bar.exists, bar.elementType == .tabBar, children.count == Destination.allCases.count,
-              contains(window, bar.frame) else {
+        // A single native snapshot keeps all four frames in the same accessibility generation.
+        // Interaction still uses a fresh, unique exact-label Button inside this one native bar.
+        let snapshot = try bar.snapshot()
+        let captured = snapshot.children.filter { $0.elementType == .button }
+        let children = bar.children(matching: .button)
+        let parent = snapshot.frame
+        guard bar.exists, snapshot.elementType == .tabBar,
+              captured.count == Destination.allCases.count,
+              children.count == Destination.allCases.count, contains(window, parent) else {
             throw NavigationIssue("The actual system TabBar must contain exactly four destinations")
         }
         var buttons: [Destination: XCUIElement] = [:]
         for destination in Destination.allCases {
+            let native = captured.filter { $0.label == destination.rawValue }
             let matches = children.matching(NSPredicate(format: "label == %@", destination.rawValue))
-            guard matches.count == 1 else {
+            guard native.count == 1, matches.count == 1 else {
                 throw NavigationIssue("System TabBar destination is missing or ambiguous: \(destination.rawValue)")
             }
+            let frame = native[0].frame
             let button = matches.element
-            try validate(button, destination: destination, identifier: nil, parent: bar.frame, window: window)
+            guard contains(parent, frame), contains(window, frame), button.exists, button.isHittable else {
+                throw NavigationIssue("Navigation destination is not immediately hittable: \(destination.rawValue), \(frame)")
+            }
             buttons[destination] = button
         }
-        return Navigation(surface: .systemTabBar, parentFrame: bar.frame, buttons: buttons)
+        return Navigation(surface: .systemTabBar, parentFrame: parent, buttons: buttons)
     }
     private func iPadTopGroup(_ parent: XCUIElement, window: CGRect) throws -> Navigation {
         // The recorded native iPadOS18 hierarchy uses Other -> four direct Button
@@ -185,20 +200,33 @@ final class DustoreUITests: XCTestCase {
         throw NavigationIssue("Legacy iPad without a sidebar must expose an actual system TabBar")
     }
     private func navigation(in app: XCUIApplication, requireNative: Bool = false, timeout: TimeInterval = 5) -> Navigation? {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        func remaining() -> TimeInterval { max(0, deadline - ProcessInfo.processInfo.systemUptime) }
         var resolved: Navigation?
         var lastIssue = "Navigation not resolved"
-        let predicate = NSPredicate { _, _ in
+        func attempt() -> Bool {
             do {
-                resolved = try self.resolveNavigation(in: app, requireNative: requireNative)
+                let current = try resolveNavigation(in: app, requireNative: requireNative)
+                guard remaining() > 0 else {
+                    lastIssue = "Complete navigation read exceeded the original \(timeout)s readiness budget"
+                    return false
+                }
+                resolved = current
                 return true
             } catch {
                 lastIssue = String(describing: error)
                 return false
             }
         }
-        let ready = XCTNSPredicateExpectation(predicate: predicate, object: app)
-        let result = XCTWaiter.wait(for: [ready], timeout: timeout)
-        guard result == .completed, let resolved = resolved else {
+        // Do not spend the first poll interval before reading an already-ready native bar.
+        // A retry receives only the remainder of the same original deadline.
+        var ready = attempt()
+        if !ready, remaining() > 0 {
+            let predicate = NSPredicate { _, _ in attempt() }
+            let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
+            ready = XCTWaiter.wait(for: [expectation], timeout: remaining()) == .completed
+        }
+        guard ready, remaining() > 0, let resolved = resolved else {
             let failure = XCTAttachment(string: lastIssue + "\n" + app.debugDescription)
             failure.name = "navigation-resolution-failure"
             failure.lifetime = .keepAlways; add(failure)
@@ -226,23 +254,30 @@ final class DustoreUITests: XCTestCase {
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
         func remaining() -> TimeInterval { max(0, deadline - ProcessInfo.processInfo.systemUptime) }
         let errors = app.scrollViews.matching(NSPredicate(format: "identifier == %@", "store.error"))
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            guard errors.count == 1, let window = try? self.exactWindow(in: app) else { return false }
+        guard let window = try? exactWindow(in: app), remaining() > 0 else { return false }
+        func errorVisible() -> Bool {
+            guard errors.count == 1 else { return false }
             let error = errors.element
             let titles = error.staticTexts.matching(NSPredicate(format: "label == %@", "Магазин недоступен"))
             guard titles.count == 1 else { return false }
             let title = titles.element
-            return error.isHittable && self.contains(window, error.frame)
-                && title.isHittable && self.contains(window, title.frame)
-        }, object: app)
-        guard remaining() > 0, XCTWaiter.wait(for: [ready], timeout: remaining()) == .completed else { return false }
+            let errorFrame = error.frame
+            let titleFrame = title.frame
+            return contains(window, errorFrame) && contains(window, titleFrame)
+                && error.isHittable && title.isHittable && remaining() > 0
+        }
+        var visible = errorVisible()
+        if !visible, remaining() > 0 {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in errorVisible() }, object: app)
+            visible = XCTWaiter.wait(for: [ready], timeout: remaining()) == .completed
+        }
+        guard visible, remaining() > 0 else { return false }
         let error = errors.element
         var gestures = 0
         while remaining() > 0 {
             if retry.exists && retry.isHittable && remaining() > 0 { return true }
             guard gestures < 4, errors.count == 1, error.isHittable,
-                  let window = try? exactWindow(in: app), contains(window, error.frame),
-                  remaining() > 0 else { return false }
+                  contains(window, error.frame), remaining() > 0 else { return false }
             // Only this app's exact error ScrollView; no window-wide swipe or deadline reset.
             error.swipeUp()
             gestures += 1

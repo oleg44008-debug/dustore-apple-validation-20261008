@@ -4,8 +4,8 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "Iteration3 Root-reviewed iOS1.2.0 helperF749CEFE; all6 test bodies unchanged; owned Store scrolling within10s; source-promotion-v2",
-      "snapshottedAtUtc": "2026-10-09T18:02:37.648019+00:00"
+      "milestone": "root-reviewed-accessibility-store-recovery-and-native-snapshot-v3-20261009",
+      "snapshottedAtUtc": "2026-10-09T18:36:40.826691+00:00"
     },
     "mac": {
       "owner": "mac_design",
@@ -156,8 +156,8 @@
       "path": "ios/App/Views.swift",
       "source": "DustoreIOS/App/Views.swift",
       "platform": "ios",
-      "bytes": 34411,
-      "sha256": "c4796dd30ec06a17c460214b10bd420033b6de5f9ec383a31bb2495fb82eea75"
+      "bytes": 36649,
+      "sha256": "e84e4283d3b01331c26273e3ab43d34b29aa81495bbc0389581558e0a817a3de"
     },
     {
       "path": "ios/App/WebViews.swift",
@@ -219,8 +219,8 @@
       "path": "ios/UITests/DustoreUITests.swift",
       "source": "DustoreIOS/UITests/DustoreUITests.swift",
       "platform": "ios",
-      "bytes": 20928,
-      "sha256": "f749cefe8c776c3a742a8145859d108b0510efa8e144917a399ecd51f1b8d787"
+      "bytes": 22767,
+      "sha256": "349536642f666c7f9e044ad7d419bfed1a40fabfb4fc6cb1838e19834eb8f70f"
     },
     {
       "path": "ios/VALIDATION.md",
