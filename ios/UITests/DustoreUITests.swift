@@ -81,18 +81,18 @@ final class DustoreUITests: XCTestCase {
         return windows[0].frame
     }
     private func systemBar(_ bar: XCUIElement, window: CGRect) throws -> Navigation {
-        let children = bar.buttons.allElementsBoundByIndex
+        let children = bar.buttons
         guard bar.exists, bar.elementType == .tabBar, children.count == Destination.allCases.count,
               contains(window, bar.frame) else {
             throw NavigationIssue("The actual system TabBar must contain exactly four destinations")
         }
         var buttons: [Destination: XCUIElement] = [:]
         for destination in Destination.allCases {
-            let matches = children.filter { $0.label == destination.rawValue }
+            let matches = children.matching(NSPredicate(format: "label == %@", destination.rawValue))
             guard matches.count == 1 else {
                 throw NavigationIssue("System TabBar destination is missing or ambiguous: \(destination.rawValue)")
             }
-            let button = matches[0]
+            let button = matches.element
             try validate(button, destination: destination, identifier: nil, parent: bar.frame, window: window)
             buttons[destination] = button
         }
@@ -222,6 +222,33 @@ final class DustoreUITests: XCTestCase {
         }
         navigationEvidence(navigation, name: "all-four-navigation-destinations")
     }
+    private func reachableStoreRecovery(in app: XCUIApplication, retry: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        func remaining() -> TimeInterval { max(0, deadline - ProcessInfo.processInfo.systemUptime) }
+        let errors = app.scrollViews.matching(NSPredicate(format: "identifier == %@", "store.error"))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard errors.count == 1, let window = try? self.exactWindow(in: app) else { return false }
+            let error = errors.element
+            let titles = error.staticTexts.matching(NSPredicate(format: "label == %@", "Магазин недоступен"))
+            guard titles.count == 1 else { return false }
+            let title = titles.element
+            return error.isHittable && self.contains(window, error.frame)
+                && title.isHittable && self.contains(window, title.frame)
+        }, object: app)
+        guard remaining() > 0, XCTWaiter.wait(for: [ready], timeout: remaining()) == .completed else { return false }
+        let error = errors.element
+        var gestures = 0
+        while remaining() > 0 {
+            if retry.exists && retry.isHittable && remaining() > 0 { return true }
+            guard gestures < 4, errors.count == 1, error.isHittable,
+                  let window = try? exactWindow(in: app), contains(window, error.frame),
+                  remaining() > 0 else { return false }
+            // Only this app's exact error ScrollView; no window-wide swipe or deadline reset.
+            error.swipeUp()
+            gestures += 1
+        }
+        return false
+    }
     private func destination(_ title: String, in app: XCUIApplication, requireNative: Bool = false) {
         guard let target = Destination(rawValue: title), let navigation = navigation(in: app, requireNative: requireNative) else {
             XCTFail("Unknown or unavailable destination \(title)"); return
@@ -238,7 +265,12 @@ final class DustoreUITests: XCTestCase {
         case .ex: marker = app.buttons["ex.import"]; timeout = 5
         case .settings: marker = app.staticTexts["Анимации интерфейса"]; timeout = 5
         }
-        XCTAssertTrue(marker.waitForExistence(timeout: timeout), "Navigation must display the actual \(title) content.")
+        if target == .store {
+            XCTAssertTrue(reachableStoreRecovery(in: app, retry: marker, timeout: timeout),
+                          "The actual Store error must be visible and Retry reachable within the original navigation budget.")
+        } else {
+            XCTAssertTrue(marker.waitForExistence(timeout: timeout), "Navigation must display the actual \(title) content.")
+        }
         XCTAssertTrue(marker.isHittable, "The actual destination content must be onscreen after navigation.")
         XCTAssertEqual(app.state, .runningForeground, "The navigation round trip must preserve the live app.")
         let evidence = XCTAttachment(string: "destination=\(title)\nmarker=\(marker.identifier)\nlabel=\(marker.label)\nexists=\(marker.exists)\nhittable=\(marker.isHittable)\nframe=\(marker.frame)")

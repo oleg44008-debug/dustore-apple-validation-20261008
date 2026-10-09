@@ -4,13 +4,13 @@
   "freezes": {
     "ios": {
       "owner": "foundation",
-      "milestone": "Iteration3 iOS1.2.0 strict-native-tablet-tabs66B39131",
-      "snapshottedAtUtc": "2026-10-09T17:24:29.301597+00:00"
+      "milestone": "Iteration3 Root-reviewed iOS1.2.0 helperF749CEFE; all6 test bodies unchanged; owned Store scrolling within10s; source-promotion-v2",
+      "snapshottedAtUtc": "2026-10-09T18:02:37.648019+00:00"
     },
     "mac": {
       "owner": "mac_design",
-      "milestone": "Iteration3 Root-reviewed macOS5.4.1 readiness-v2 fixture853551F8 after current runtime failures f33e0ec; source-promotion335E6888",
-      "snapshottedAtUtc": "2026-10-09T17:41:46.307426+00:00"
+      "milestone": "Iteration3 Root-reviewed macOS5.4.1 final fixtureBC5048D0; original32 checks and Until15s preserved; source-promotion2CF0389F",
+      "snapshottedAtUtc": "2026-10-09T18:02:37.648019+00:00"
     }
   },
   "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
@@ -219,8 +219,8 @@
       "path": "ios/UITests/DustoreUITests.swift",
       "source": "DustoreIOS/UITests/DustoreUITests.swift",
       "platform": "ios",
-      "bytes": 18943,
-      "sha256": "66b3913144dc742b668b867d30749d4c5770794df960c4b105a520e07422f10b"
+      "bytes": 20928,
+      "sha256": "f749cefe8c776c3a742a8145859d108b0510efa8e144917a399ecd51f1b8d787"
     },
     {
       "path": "ios/VALIDATION.md",
@@ -408,8 +408,8 @@
       "path": "launcher-mac/Services/GameWindowChecks.cs",
       "source": "DustoreLauncherV-Mac/Services/GameWindowChecks.cs",
       "platform": "mac",
-      "bytes": 30768,
-      "sha256": "853551f80badb759ac8e3538468dfaea242cd88b837ed5d75b356e29f85d4873"
+      "bytes": 32471,
+      "sha256": "bc5048d0916550d3e2101b16631d872b7465ce2f380ab705813fa7ecbf6ac5ea"
     },
     {
       "path": "launcher-mac/Services/LauncherServices.cs",

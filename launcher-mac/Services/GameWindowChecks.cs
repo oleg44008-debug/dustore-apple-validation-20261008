@@ -34,6 +34,27 @@ internal static class GameWindowChecks
                     && controls.Position.X + controls.Width * metrics.Item3 <= area.Right
                     && controls.Position.Y + controls.Height * metrics.Item3 <= area.Bottom,
                     $"Exit panel fits {metrics.Item1}x{metrics.Item2} working pixels at {metrics.Item3:0.#} scaling");
+                // A cold native client may not have a hit-test scene after the fixed Show delay.
+                // Await the same complete predicate, within the existing15s fixture budget.
+                try
+                {
+                    await UntilAsync(() => VisibleButton(controls, controls.ExitButton) && VisibleButton(controls, controls.ReturnButton),
+                        "fallback Exit/Return hit-test scene at " + metrics.Item1 + " pixels");
+                }
+                catch (TimeoutException error)
+                {
+                    throw new TimeoutException("Fallback Exit/Return readiness failed; " + JsonSerializer.Serialize(new
+                    {
+                        workingWidth = metrics.Item1, scaling = metrics.Item3, clientSize = controls.ClientSize.ToString(),
+                        windowVisible = controls.IsVisible, windowState = controls.WindowState.ToString(),
+                        exit = new { visible = controls.ExitButton.IsVisible, enabled = controls.ExitButton.IsEnabled,
+                            bounds = controls.ExitButton.Bounds.ToString(), origin = controls.ExitButton.TranslatePoint(default, controls)?.ToString(),
+                            hittable = VisibleButton(controls, controls.ExitButton) },
+                        returnButton = new { visible = controls.ReturnButton.IsVisible, enabled = controls.ReturnButton.IsEnabled,
+                            bounds = controls.ReturnButton.Bounds.ToString(), origin = controls.ReturnButton.TranslatePoint(default, controls)?.ToString(),
+                            hittable = VisibleButton(controls, controls.ReturnButton) }
+                    }), error);
+                }
                 Check(VisibleButton(controls, controls.ExitButton) && VisibleButton(controls, controls.ReturnButton),
                     "both Exit and Return have actual visible, hittable bounds at " + metrics.Item1 + " pixels");
             }
