@@ -9,8 +9,8 @@
     },
     "mac": {
       "owner": "mac_design",
-      "milestone": "Iteration3 Root-reviewed macOS5.4.1 stage47141E84 source-promotionF8C56CC7 after PhaseA6B2C552D",
-      "snapshottedAtUtc": "2026-10-09T17:24:29.301597+00:00"
+      "milestone": "Iteration3 Root-reviewed macOS5.4.1 readiness-v2 fixture853551F8 after current runtime failures f33e0ec; source-promotion335E6888",
+      "snapshottedAtUtc": "2026-10-09T17:41:46.307426+00:00"
     }
   },
   "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
@@ -408,8 +408,8 @@
       "path": "launcher-mac/Services/GameWindowChecks.cs",
       "source": "DustoreLauncherV-Mac/Services/GameWindowChecks.cs",
       "platform": "mac",
-      "bytes": 26079,
-      "sha256": "ea9d9739c8fbb518e5845f5988d6f5c9891555ab759161b1e56701732cc965c6"
+      "bytes": 30768,
+      "sha256": "853551f80badb759ac8e3538468dfaea242cd88b837ed5d75b356e29f85d4873"
     },
     {
       "path": "launcher-mac/Services/LauncherServices.cs",

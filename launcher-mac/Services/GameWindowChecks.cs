@@ -91,6 +91,32 @@ internal static class GameWindowChecks
         var previousArea = UltraMode.WorkingArea;
         var previousState = launcher.WindowState;
         var observations = new List<object>();
+        var originalCheck = check;
+        check = (passed, description) =>
+        {
+            if (!passed)
+            {
+                try
+                {
+                    var current = launcher.TryGetPlatformHandle();
+                    bool nativeCurrent = current is { HandleDescriptor: "NSWindow" } && current.Handle != IntPtr.Zero;
+                    var currentPanel = launcher.GameControls.Find(game.Id); var currentSession = NativeAppSessions.Find(game.Id);
+                    description += "; " + JsonSerializer.Serialize(new
+                    {
+                        nativeMainState = new { managedVisible = launcher.IsVisible, managedState = launcher.WindowState.ToString(),
+                            descriptor = current?.HandleDescriptor, handle = current?.Handle.ToString(),
+                            windowNumber = nativeCurrent ? NativeGameControlPanel.NativeWindowNumberOf(launcher) : (long?)null,
+                            nativeVisible = nativeCurrent ? NativeWindowVisible(current!.Handle, NativeSelector("isVisible")) != 0 : (bool?)null,
+                            nativeMiniaturized = nativeCurrent ? NativeGameControlPanel.IsMiniaturized(launcher) : (bool?)null },
+                        sessionProcessId = currentSession?.ProcessId, sessionLaunchStamp = currentSession?.LaunchStamp,
+                        panelPresent = currentPanel is not null, panelVisible = currentPanel?.IsVisible,
+                        panelMetrics = currentPanel is null ? null : PanelMetrics(currentPanel)
+                    });
+                }
+                catch (Exception error) { description += "; diagnosticError=" + error.GetType().Name + ": " + error.Message; }
+            }
+            originalCheck(passed, description);
+        };
         try
         {
             UltraMode.WorkingArea = (780, 560);
@@ -114,7 +140,6 @@ internal static class GameWindowChecks
                 "actual native game buttons expose localized accessibility labels and identify the exact game");
             check(panel.NativeMovable && CornersUncovered(values, panel.NativeScreenFrame),
                 "native title bar is movable and initial placement leaves all four game corner texts uncovered");
-            await VerifyMainCloseReturnAsync(launcher, game, session, panel, "windowed", check);
             launcher.WindowState = WindowState.Minimized; await Task.Delay(250);
             check(NativeGameControlPanel.IsMiniaturized(launcher) && panel.IsVisible && panel.ExitHittable,
                 "actual AppKit launcher miniaturization leaves the unowned NSPanel visible and hittable");
@@ -130,6 +155,7 @@ internal static class GameWindowChecks
             observations.Add(new { mode = "windowed", fixture = values, panel = PanelMetrics(panel), launcherActuallyMiniaturized,
                 launcherWindowNumber, launcherWindowsAtMinimize, nativeLaunchStamp = session.LaunchStamp });
             await File.WriteAllTextAsync(Path.Combine(reportDirectory, "game-window-native-snapshots.json"), JsonSerializer.Serialize(new { observations }, new JsonSerializerOptions { WriteIndented = true }));
+            await VerifyMainCloseReturnAsync(launcher, game, session, panel, "windowed", check);
             panel.SendExitKey(commandW: true);
             await UntilAsync(() => NativeAppSessions.Find(game.Id) is null && !panel.IsVisible, "native game Command-W exit");
             check(!ProcessStillExists(pid), "panel Command-W confirms actual owned native PID exit, not just a quit request");
@@ -180,23 +206,25 @@ internal static class GameWindowChecks
         {
             // Use the existing Return action if launch presentation has already minimized Main.
             if (!launcher.IsVisible || launcher.WindowState == WindowState.Minimized) panel.PerformReturn();
-            await UntilAsync(() => closed || (launcher.IsVisible && SameMain(true)), mode + " Main.Close visible prerequisite");
-            check(!closed && mainNumber > 0 && panelNumber > 0 && SameMain(true) && ExactGameAndPanel(),
+            await ReadyAsync(VisibleMainAndGame, mode + " Main.Close visible prerequisite");
+            Check(VisibleMainAndGame(),
                 mode + " Main.Close starts with the exact live native Main, game session and usable Exit/Return panel");
             launcher.Close();
-            await UntilAsync(() => closed || (!launcher.IsVisible && SameMain(false)), mode + " Main.Close hides the same native Main");
-            check(!closed && !launcher.IsVisible && SameMain(false),
+            await ReadyAsync(() => !launcher.IsVisible && SameMain(false) && ExactGameAndPanel(), mode + " Main.Close hides the same native Main");
+            Check(!closed && !launcher.IsVisible && SameMain(false),
                 mode + " ordinary Main.Close is cancelled without Closed and hides the same NSWindow handle and windowNumber");
-            check(ExactGameAndPanel(),
+            Check(ExactGameAndPanel(),
                 mode + " hidden Main retains the exact live game session and native controller with onscreen hittable Exit/Return");
             panel.PerformReturn();
-            await UntilAsync(() => closed || (launcher.IsVisible && launcher.WindowState != WindowState.Minimized && SameMain(true)),
-                mode + " Return restores the same native Main after Close");
-            check(!closed && launcher.IsVisible && launcher.WindowState != WindowState.Minimized && SameMain(true) && ExactGameAndPanel(),
+            await ReadyAsync(VisibleMainAndGame, mode + " Return restores the same native Main after Close");
+            Check(VisibleMainAndGame(),
                 mode + " PerformReturn shows the same native Main with the same live session and Exit/Return controller after Close");
         }
         finally { launcher.Closed -= onClosed; }
 
+        bool VisibleMainAndGame() => !closed && mainNumber > 0 && panelNumber > 0 && launcher.IsVisible
+            && launcher.WindowState != WindowState.Minimized && SameMain(true)
+            && !NativeGameControlPanel.IsMiniaturized(launcher) && ExactGameAndPanel();
         bool SameMain(bool visible) => !closed
             && launcher.TryGetPlatformHandle() is { HandleDescriptor: "NSWindow" } current && current.Handle == mainHandle
             && NativeGameControlPanel.NativeWindowNumberOf(launcher) == mainNumber
@@ -207,6 +235,40 @@ internal static class GameWindowChecks
             && ReferenceEquals(launcher.GameControls.Find(game.Id), panel) && panel.Entry.Id == game.Id
             && panel.NativeWindowNumber == panelNumber && panel.IsNativePanel && panel.IsVisible
             && panel.NativeVisibility.OnActiveSpace && panel.NativeVisibility.OcclusionVisible && panel.ExitHittable && panel.ReturnHittable;
+        async Task ReadyAsync(Func<bool> condition, string description)
+        {
+            try { await UntilAsync(() => closed || condition(), description); }
+            catch (TimeoutException error) { throw new TimeoutException(description + "; " + FailureDetails(), error); }
+        }
+        void Check(bool passed, string description) => check(passed, passed ? description : description + "; " + FailureDetails());
+        string FailureDetails()
+        {
+            try
+            {
+                var current = launcher.TryGetPlatformHandle();
+                bool nativeCurrent = !closed && current is { HandleDescriptor: "NSWindow" } && current.Handle != IntPtr.Zero;
+                long? currentNumber = nativeCurrent ? NativeGameControlPanel.NativeWindowNumberOf(launcher) : null;
+                bool? nativeVisible = nativeCurrent ? NativeWindowVisible(current!.Handle, NativeSelector("isVisible")) != 0 : null;
+                bool? nativeMiniaturized = nativeCurrent ? NativeGameControlPanel.IsMiniaturized(launcher) : null;
+                var visibility = panel.NativeVisibility;
+                return JsonSerializer.Serialize(new
+                {
+                    mode, closed, managedMainVisible = launcher.IsVisible, managedMainState = launcher.WindowState.ToString(),
+                    nativeMainState = new { expectedHandle = mainHandle.ToString(), currentHandle = current?.Handle.ToString(),
+                        expectedWindowNumber = mainNumber, currentWindowNumber = currentNumber, nativeVisible, nativeMiniaturized },
+                    predicates = new { mainNumberPositive = mainNumber > 0, panelNumberPositive = panelNumber > 0,
+                        sameMainHandle = nativeCurrent && current!.Handle == mainHandle, sameMainWindowNumber = currentNumber == mainNumber,
+                        sameSession = ReferenceEquals(NativeAppSessions.Find(game.Id), session), sessionEntryMatches = session.Entry.Id == game.Id,
+                        validLaunchStamp = double.IsFinite(session.LaunchStamp) && session.LaunchStamp > 0, gamePidAlive = ProcessStillExists(session.ProcessId),
+                        samePanel = ReferenceEquals(launcher.GameControls.Find(game.Id), panel), panelEntryMatches = panel.Entry.Id == game.Id,
+                        samePanelWindowNumber = panel.NativeWindowNumber == panelNumber, nativePanel = panel.IsNativePanel, panelVisible = panel.IsVisible,
+                        onActiveSpace = visibility.OnActiveSpace, occlusionVisible = visibility.OcclusionVisible,
+                        exitHittable = panel.ExitHittable, returnHittable = panel.ReturnHittable },
+                    gameProcessId = session.ProcessId, gameLaunchStamp = session.LaunchStamp, panelMetrics = PanelMetrics(panel)
+                });
+            }
+            catch (Exception error) { return "diagnosticError=" + error.GetType().Name + ": " + error.Message; }
+        }
     }
 
     [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "sel_registerName")]
