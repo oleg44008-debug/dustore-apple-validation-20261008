@@ -161,7 +161,7 @@ struct StoreScreen: View {
                                 YellowButton(title: "Попробовать снова", symbol: "arrow.clockwise") { state.reload() }.accessibilityIdentifier("store.retry")
                             }
                         }.padding(22).frame(maxWidth: 600).frame(maxWidth: .infinity)
-                    }.safeAreaInset(edge: .bottom, spacing: 0) {
+                    }.accessibilityIdentifier("store.error").safeAreaInset(edge: .bottom, spacing: 0) {
                         if dynamicType.isAccessibilitySize {
                             // Keep the one recovery action above the native tab bar; error details remain scrollable.
                             Button { state.reload() } label: {
@@ -171,7 +171,7 @@ struct StoreScreen: View {
                                 .frame(maxWidth: 600).padding(.horizontal, 22).padding(.vertical, 12)
                                 .frame(maxWidth: .infinity).background(Theme.background)
                         }
-                    }.background(Theme.background).accessibilityIdentifier("store.error")
+                    }.background(Theme.background)
                 }
             }
         }.background(Theme.background).toolbarBackground(Theme.background, for: .tabBar)
