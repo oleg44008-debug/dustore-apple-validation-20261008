@@ -35,8 +35,12 @@ public partial class App : Application
             desktop.MainWindow = window;
             window.AttachGameLifetime(desktop);
             if (Program.UiSmoke)
+            {
+                bool uiSmokeStarted = false;
                 window.Opened += async (_, _) =>
                 {
+                    if (uiSmokeStarted) return;
+                    uiSmokeStarted = true;
                     try
                     {
                         await window.InitializeAsync();
@@ -153,6 +157,7 @@ public partial class App : Application
                         desktop.Shutdown(1);
                     }
                 };
+            }
         }
         base.OnFrameworkInitializationCompleted();
     }

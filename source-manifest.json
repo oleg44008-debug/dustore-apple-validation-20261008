@@ -9,8 +9,8 @@
     },
     "mac": {
       "owner": "mac_design",
-      "milestone": "Iteration3 Root-reviewed macOS5.4.1 final fixtureBC5048D0; original32 checks and Until15s preserved; source-promotion2CF0389F",
-      "snapshottedAtUtc": "2026-10-09T18:02:37.648019+00:00"
+      "milestone": "root-reviewed-ui-smoke-opened-once-v1-20261009",
+      "snapshottedAtUtc": "2026-10-09T18:18:10.714208+00:00"
     }
   },
   "sourceScope": "Only the supplied isolated Prime/Source snapshot; both editions are built with explicit configurations.",
@@ -247,8 +247,8 @@
       "path": "launcher-mac/App.axaml.cs",
       "source": "DustoreLauncherV-Mac/App.axaml.cs",
       "platform": "mac",
-      "bytes": 21801,
-      "sha256": "17898be223537faff935594187010ac42fc90589df5efd6b1df78faffe607d51"
+      "bytes": 21970,
+      "sha256": "cab3723ba2914835a95b2f344086e8ebe4847105283799f8b29ecc583881fc3f"
     },
     {
       "path": "launcher-mac/Assets/dustore-logo-original.png",
